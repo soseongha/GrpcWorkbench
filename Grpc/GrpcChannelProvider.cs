@@ -23,55 +23,10 @@ public class GrpcChannelProvider : IGrpcChannelProvider
 
     public Task<GrpcChannel> GetChannelAsync(GrpcSession session)
     {
-        // UDS 사용 시
-        if (session.UseUnixDomainSocket && !string.IsNullOrEmpty(session.UnixSocketPath))
-        {
-            return GetUnixDomainSocketChannelAsync(session);
-        }
+        if (!session.UseUnixDomainSocket || string.IsNullOrWhiteSpace(session.UnixSocketPath))
+            throw new InvalidOperationException("Only UDS session is supported.");
 
-        // TCP 사용 시
-        var scheme = session.UseTls ? "https" : "http";
-        var key = $"{scheme}://{session.Address}:{session.Port}";
-
-        if (_channels.TryGetValue(key, out var channel) && channel != null)
-        {
-            return Task.FromResult(channel);
-        }
-
-        var httpHandler = new SocketsHttpHandler
-        {
-            EnableMultipleHttp2Connections = true,
-            KeepAlivePingDelay = TimeSpan.FromSeconds(60),
-            KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
-            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
-            ConnectTimeout = TimeSpan.FromSeconds(10)
-        };
-
-        // TLS를 사용하지 않을 경우 인증서 검증 무시
-        if (!session.UseTls)
-        {
-            httpHandler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-            {
-                RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true
-            };
-        }
-
-        var options = new GrpcChannelOptions
-        {
-            HttpHandler = httpHandler,
-            MaxReceiveMessageSize = 100 * 1024 * 1024, // 100 MB
-            MaxSendMessageSize = 100 * 1024 * 1024,    // 100 MB
-            MaxRetryAttempts = 3,
-            MaxRetryBufferSize = 16 * 1024 * 1024,     // 16 MB
-            MaxRetryBufferPerCallSize = 1024 * 1024    // 1 MB
-        };
-
-        var newChannel = GrpcChannel.ForAddress(key, options);
-        _channels[key] = newChannel;
-
-        _logger.LogInformation("Created gRPC channel to {Key} (TLS: {UseTls})", key, session.UseTls);
-
-        return Task.FromResult(newChannel);
+        return GetUnixDomainSocketChannelAsync(session);
     }
 
     private Task<GrpcChannel> GetUnixDomainSocketChannelAsync(GrpcSession session)

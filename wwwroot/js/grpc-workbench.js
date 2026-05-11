@@ -29,68 +29,36 @@ function clearLogs() {
     addLog('로그가 초기화되었습니다.');
 }
 
-// ============ 연결 타입 전환 ============
-function toggleConnectionType() {
-    const useUds = document.getElementById('useUnixDomainSocket').checked;
-    const tcpSettings = document.getElementById('tcpSettings');
-    const udsSettings = document.getElementById('udsSettings');
+async function extractErrorMessage(response, fallbackMessage) {
+    try {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const errData = await response.json();
+            if (errData?.error) return errData.error;
+            if (errData?.message) return errData.message;
+            return fallbackMessage;
+        }
 
-    if (useUds) {
-        tcpSettings.classList.add('d-none');
-        udsSettings.classList.remove('d-none');
-        addLog('Unix Domain Socket 모드로 전환');
-    } else {
-        tcpSettings.classList.remove('d-none');
-        udsSettings.classList.add('d-none');
-        addLog('TCP/IP 모드로 전환');
+        const text = await response.text();
+        return text || fallbackMessage;
+    } catch {
+        return fallbackMessage;
     }
 }
 
 // ============ Step 1: 세션 생성 ============
 async function createSession() {
-    const useUds = document.getElementById('useUnixDomainSocket').checked;
-
-    let requestBody;
-
-    if (useUds) {
-        const unixSocketPath = document.getElementById('unixSocketPath').value;
-        if (!unixSocketPath) {
-            addLog('Unix Socket 경로를 입력하세요.', 'error');
-            return;
-        }
-
-        requestBody = {
-            address: 'localhost',
-            port: 50051,
-            useTls: false,
-            useUnixDomainSocket: true,
-            unixSocketPath: unixSocketPath
-        };
-
-        addLog(`세션 생성 중... (UDS: ${unixSocketPath})`);
-    } else {
-        const address = document.getElementById('serverAddress').value || 'localhost';
-        const port = parseInt(document.getElementById('serverPort').value) || 50051;
-        const useTls = document.getElementById('useTls').checked;
-
-        requestBody = {
-            address: address,
-            port: port,
-            useTls: useTls,
-            useUnixDomainSocket: false
-        };
-
-        addLog(`세션 생성 중... (${useTls ? 'https' : 'http'}://${address}:${port})`);
-    }
+    addLog('세션 생성 중... (UDS 설정값 사용)');
 
     try {
         const response = await fetch('/api/proto/create-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
+            method: 'POST'
         });
 
-        if (!response.ok) throw new Error('세션 생성 실패');
+        if (!response.ok) {
+            const errorMessage = await extractErrorMessage(response, '세션 생성 실패');
+            throw new Error(errorMessage);
+        }
 
         const data = await response.json();
         currentSessionId = data.sessionId;
@@ -100,21 +68,13 @@ async function createSession() {
         const sessionStatusTextEl = document.getElementById('sessionStatusText');
         if (sessionStatusEl) sessionStatusEl.classList.remove('d-none');
         if (sessionStatusTextEl) {
-            if (useUds) {
-                sessionStatusTextEl.textContent = `${currentSessionId.substring(0, 8)}... (UDS)`;
-            } else {
-                sessionStatusTextEl.textContent = `${currentSessionId.substring(0, 8)}...`;
-            }
+            sessionStatusTextEl.textContent = `${currentSessionId.substring(0, 8)}... (UDS)`;
         }
 
         const uploadBtnEl = document.getElementById('uploadBtn');
         if (uploadBtnEl) uploadBtnEl.disabled = false;
 
-        if (useUds) {
-            addLog(`✓ 세션 생성 완료 (UDS): ${currentSessionId}`, 'success');
-        } else {
-            addLog(`✓ 세션 생성 완료: ${currentSessionId}`, 'success');
-        }
+        addLog(`✓ 세션 생성 완료 (UDS): ${currentSessionId} / ${data.unixSocketPath || 'N/A'}`, 'success');
         startHealthCheck();
     } catch (error) {
         addLog(`세션 생성 실패: ${error.message}`, 'error');
@@ -138,8 +98,6 @@ async function uploadProto() {
     const formData = new FormData();
     formData.append('sessionId', currentSessionId);
     formData.append('protoFile', file);
-    formData.append('address', document.getElementById('serverAddress')?.value || 'localhost');
-    formData.append('port', document.getElementById('serverPort')?.value || '50051');
 
     try {
         addLog(`파일 업로드 중... (${file.name})`);
@@ -149,8 +107,8 @@ async function uploadProto() {
         });
 
         if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `Proto 업로드 실패 (${response.status})`);
+            const errorMessage = await extractErrorMessage(response, `Proto 업로드 실패 (${response.status})`);
+            throw new Error(errorMessage);
         }
 
         const data = await response.json();
@@ -210,9 +168,7 @@ async function uploadProtoText() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 sessionId: currentSessionId,
-                protoText,
-                address: document.getElementById('serverAddress').value,
-                port: parseInt(document.getElementById('serverPort').value) || 50051
+                protoText
             })
         });
 
@@ -928,22 +884,17 @@ function updateHealthUI(status) {
     if (!dot || !text) return;
 
     const states = {
-        'connected': { color: '#198754', label: '서버 연결됨', cls: 'text-success' },
-        'disconnected': { color: '#dc3545', label: '서버 끊김', cls: 'text-danger' },
-        'unknown': { color: '#6c757d', label: '확인 중...', cls: 'text-muted' }
+        'connected': { color: '#198754', label: '서버 연결됨', textColor: '#146c43' },
+        'disconnected': { color: '#dc3545', label: '서버 끊김', textColor: '#b02a37' },
+        'unknown': { color: '#6c757d', label: '확인 중...', textColor: '#495057' }
     };
 
     const state = states[status] || states['unknown'];
     dot.style.backgroundColor = state.color;
     text.textContent = state.label;
-    text.className = state.cls;
+    text.style.color = state.textColor;
 }
 
 // ============ 이벤트 리스너 등록 ============
 function initializeEventListeners() {
-    // UDS 토글 이벤트 리스너
-    const udsToggle = document.getElementById('useUnixDomainSocket');
-    if (udsToggle) {
-        udsToggle.addEventListener('change', toggleConnectionType);
-    }
 }

@@ -23,40 +23,19 @@
                             <h6 class="mb-0">
                                 <span class="badge bg-white text-primary me-2">1</span>세션 설정
                             </h6>
-                            <i class="bi bi-chevron-down" id="step1-icon"></i>
+                            <div class="d-flex align-items-center gap-2">
+                                <div id="serverHealth" class="d-flex align-items-center gap-1 px-2 py-1 rounded bg-white border border-light" style="font-size: 0.8rem;">
+                                    <span id="healthDot" class="rounded-circle d-inline-block" style="width: 10px; height: 10px; background-color: #6c757d; border: 1px solid #adb5bd;"></span>
+                                    <span id="healthText" class="text-dark fw-semibold">확인 중...</span>
+                                </div>
+                                <i class="bi bi-chevron-down" id="step1-icon"></i>
+                            </div>
                         </div>
                     </div>
                     <div class="collapse show" id="step1">
                         <div class="card-body">
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="useUnixDomainSocket">
-                                <label class="form-check-label small" for="useUnixDomainSocket">
-                                    <strong>Unix Domain Socket 사용</strong>
-                                </label>
-                            </div>
-
-                            <div id="tcpSettings">
-                                <div class="form-group mb-3">
-                                    <label for="serverAddress" class="form-label small">gRPC 서버 주소</label>
-                                    <input type="text" id="serverAddress" class="form-control form-control-sm" value="localhost" placeholder="localhost">
-                                </div>
-                                <div class="form-group mb-3">
-                                    <label for="serverPort" class="form-label small">포트</label>
-                                    <input type="number" id="serverPort" class="form-control form-control-sm" value="50051" min="1" max="65535">
-                                </div>
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="useTls">
-                                    <label class="form-check-label small" for="useTls">TLS (HTTPS) 사용</label>
-                                </div>
-                            </div>
-
-                            <div id="udsSettings" class="d-none">
-                                <div class="form-group mb-3">
-                                    <label for="unixSocketPath" class="form-label small">Unix Socket 경로</label>
-                                    <input type="text" id="unixSocketPath" class="form-control form-control-sm" 
-                                           placeholder="/var/run/grpc.sock" value="/var/run/grpc.sock">
-                                    <small class="text-muted">예: /var/run/grpc.sock</small>
-                                </div>
+                            <div class="alert alert-secondary small mb-3">
+                                UDS 소켓 경로는 서버 설정(환경변수/설정파일)에서 사용합니다.
                             </div>
 
                             <div class="form-group mb-3">
@@ -70,10 +49,6 @@
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <strong>세션:</strong> <span id="sessionStatusText"></span>
-                                    </div>
-                                    <div id="serverHealth" class="d-flex align-items-center gap-1" style="font-size: 0.8rem;">
-                                        <span id="healthDot" class="rounded-circle d-inline-block" style="width: 8px; height: 8px; background-color: #6c757d;"></span>
-                                        <span id="healthText" class="text-muted">확인 중...</span>
                                     </div>
                                 </div>
                             </div>

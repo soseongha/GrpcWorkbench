@@ -3,9 +3,6 @@ using GrpcWorkbench.Models.Api;
 using GrpcWorkbench.Models.Session;
 using GrpcWorkbench.Services;
 using Microsoft.AspNetCore.Mvc;
-using Grpc.Health.V1;
-using GrpcChannel = global::Grpc.Net.Client.GrpcChannel;
-using GrpcChannelOptions = global::Grpc.Net.Client.GrpcChannelOptions;
 
 namespace GrpcWorkbench.Controllers;
 
@@ -15,15 +12,18 @@ public class ProtoController : ControllerBase
 {
     private readonly ISessionService _sessionService;
     private readonly IProtoLoader _protoLoader;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<ProtoController> _logger;
 
     public ProtoController(
         ISessionService sessionService,
         IProtoLoader protoLoader,
+        IConfiguration configuration,
         ILogger<ProtoController> logger)
     {
         _sessionService = sessionService;
         _protoLoader = protoLoader;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -33,7 +33,7 @@ public class ProtoController : ControllerBase
         try
         {
             if (request.ProtoFile == null || request.ProtoFile.Length == 0)
-                return BadRequest("Proto file is required");
+                return BadRequest(new { error = "Proto file is required" });
 
             // 파일 읽기
             using var memoryStream = new MemoryStream();
@@ -44,29 +44,17 @@ public class ProtoController : ControllerBase
             var services = await _protoLoader.LoadProtoServicesAsync(protoContent);
 
             if (services.Count == 0)
-                return BadRequest("No services found in proto file");
+                return BadRequest(new { error = "No services found in proto file" });
 
-            // 기존 세션 확인 (없으면 새로 생성)
-            GrpcSession session;
-            if (!string.IsNullOrEmpty(request.SessionId))
-            {
-                session = _sessionService.GetSession(request.SessionId);
-                if (session == null)
-                {
-                    // 세션이 없으면 새로 생성 (새로고침 후 재연결)
-                    _logger.LogWarning("Session {SessionId} not found, creating new session", request.SessionId);
-                    session = _sessionService.CreateSession(
-                        request.Address ?? "localhost",
-                        request.Port);
-                }
-            }
-            else
-            {
-                // 세션이 없으면 생성
-                session = _sessionService.CreateSession(
-                    request.Address ?? "localhost",
-                    request.Port);
-            }
+            if (string.IsNullOrEmpty(request.SessionId))
+                return BadRequest(new { error = "SessionId is required. Create UDS session first." });
+
+            var session = _sessionService.GetSession(request.SessionId);
+            if (session == null)
+                return NotFound(new { error = "Session not found. Recreate UDS session." });
+
+            if (!session.UseUnixDomainSocket || string.IsNullOrWhiteSpace(session.UnixSocketPath))
+                return BadRequest(new { error = "Only UDS session is supported." });
 
             // Proto 업데이트
             await _sessionService.UpdateSessionProtoAsync(
@@ -94,28 +82,25 @@ public class ProtoController : ControllerBase
     }
 
     [HttpPost("create-session")]
-    public IActionResult CreateSession([FromBody] CreateSessionRequest request)
+    public IActionResult CreateSession()
     {
         try
         {
-            GrpcSession session;
+            var unixSocketPath = _configuration["UDS_SOCKET_PATH"]
+                ?? _configuration["GrpcWorkbench:UdsSocketPath"];
 
-            if (request.UseUnixDomainSocket && !string.IsNullOrEmpty(request.UnixSocketPath))
-            {
-                session = _sessionService.CreateSession(
-                    request.Address ?? "localhost",
-                    request.Port ?? 50051,
-                    request.UseTls,
-                    true,
-                    request.UnixSocketPath);
-            }
-            else
-            {
-                session = _sessionService.CreateSession(
-                    request.Address ?? "localhost",
-                    request.Port ?? 50051,
-                    request.UseTls);
-            }
+            if (string.IsNullOrWhiteSpace(unixSocketPath))
+                return BadRequest(new
+                {
+                    error = "UDS socket path is not configured. Set UDS_SOCKET_PATH env var or GrpcWorkbench:UdsSocketPath setting."
+                });
+
+            var session = _sessionService.CreateSession(
+                "localhost",
+                50051,
+                false,
+                true,
+                unixSocketPath);
 
             return Ok(new
             {
@@ -188,16 +173,15 @@ public class ProtoController : ControllerBase
             if (services.Count == 0)
                 return BadRequest("No services found in proto definition");
 
-            GrpcSession session;
-            if (!string.IsNullOrEmpty(request.SessionId))
-            {
-                session = _sessionService.GetSession(request.SessionId)
-                    ?? _sessionService.CreateSession(request.Address ?? "localhost", request.Port);
-            }
-            else
-            {
-                session = _sessionService.CreateSession(request.Address ?? "localhost", request.Port);
-            }
+            if (string.IsNullOrEmpty(request.SessionId))
+                return BadRequest(new { error = "SessionId is required. Create UDS session first." });
+
+            var session = _sessionService.GetSession(request.SessionId);
+            if (session == null)
+                return NotFound(new { error = "Session not found. Recreate UDS session." });
+
+            if (!session.UseUnixDomainSocket || string.IsNullOrWhiteSpace(session.UnixSocketPath))
+                return BadRequest(new { error = "Only UDS session is supported." });
 
             await _sessionService.UpdateSessionProtoAsync(session.SessionId, protoContent, "editor.proto");
             session.Services = services;
@@ -226,57 +210,28 @@ public class ProtoController : ControllerBase
             if (session == null)
                 return NotFound(new { status = "disconnected", message = "Session not found" });
 
-            var scheme = session.UseTls ? "https" : "http";
-            var address = $"{scheme}://{session.Address}:{session.Port}";
-
-            using var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
+            // UDS 세션은 소켓 파일 존재 여부 + 실제 연결 시도로 확인
+            if (session.UseUnixDomainSocket && !string.IsNullOrEmpty(session.UnixSocketPath))
             {
-                HttpHandler = new SocketsHttpHandler
-                {
-                    ConnectTimeout = TimeSpan.FromSeconds(3)
-                }
-            });
+                if (!System.IO.File.Exists(session.UnixSocketPath))
+                    return Ok(new { status = "disconnected", message = $"소켓 파일 없음: {session.UnixSocketPath}" });
 
-            var client = new Health.HealthClient(channel);
-
-            try
-            {
-                var response = await client.CheckAsync(
-                    new HealthCheckRequest(),
-                    deadline: DateTime.UtcNow.AddSeconds(3));
-
-                return Ok(new
-                {
-                    status = "connected",
-                    message = $"Server is {response.Status}"
-                });
-            }
-            catch
-            {
-                // Health 서비스가 없어도 TCP 연결이 되면 reachable
                 try
                 {
-                    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-                    await httpClient.GetAsync(address);
-                    return Ok(new { status = "connected", message = "Server is reachable" });
+                    var udsEndPoint = new System.Net.Sockets.UnixDomainSocketEndPoint(session.UnixSocketPath);
+                    using var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+                    var connectTask = socket.ConnectAsync(udsEndPoint);
+                    if (await Task.WhenAny(connectTask, Task.Delay(3000)) == connectTask)
+                        return Ok(new { status = "connected", message = "UDS 서버 연결됨" });
+                    return Ok(new { status = "disconnected", message = "UDS 연결 타임아웃" });
                 }
-                catch (HttpRequestException)
+                catch (Exception ex)
                 {
-                    // HTTP/2 연결 시도 - 거부되지 않으면 서버가 있음
-                    try
-                    {
-                        using var tcpClient = new System.Net.Sockets.TcpClient();
-                        var connectTask = tcpClient.ConnectAsync(session.Address, session.Port);
-                        if (await Task.WhenAny(connectTask, Task.Delay(3000)) == connectTask)
-                        {
-                            return Ok(new { status = "connected", message = "Server is reachable (TCP)" });
-                        }
-                    }
-                    catch { }
-
-                    return Ok(new { status = "disconnected", message = "Server is unreachable" });
+                    return Ok(new { status = "disconnected", message = $"UDS 연결 실패: {ex.Message}" });
                 }
             }
+
+            return Ok(new { status = "disconnected", message = "Only UDS session is supported." });
         }
         catch (Exception ex)
         {

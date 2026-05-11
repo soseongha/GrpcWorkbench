@@ -103,9 +103,10 @@ public class UnaryGrpcService : IUnaryGrpcService
         }
         catch (Exception ex)
         {
+            var actualException = UnwrapException(ex);
             response.IsSuccess = false;
-            response.ErrorMessage = ex.Message;
-            _logger.LogError(ex, "Unary call failed: {ServiceName}.{MethodName}",
+            response.ErrorMessage = actualException.Message;
+            _logger.LogError(actualException, "Unary call failed: {ServiceName}.{MethodName}",
                 payload.ServiceName, payload.MethodName);
         }
         finally
@@ -115,5 +116,20 @@ public class UnaryGrpcService : IUnaryGrpcService
         }
 
         return response;
+    }
+
+    private static Exception UnwrapException(Exception ex)
+    {
+        while (ex is TargetInvocationException tie && tie.InnerException != null)
+        {
+            ex = tie.InnerException;
+        }
+
+        if (ex is AggregateException aggregateException && aggregateException.InnerException != null)
+        {
+            return UnwrapException(aggregateException.InnerException);
+        }
+
+        return ex;
     }
 }
