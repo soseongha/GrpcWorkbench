@@ -28,18 +28,37 @@
                     </div>
                     <div class="collapse show" id="step1">
                         <div class="card-body">
-                            <div class="form-group mb-3">
-                                <label for="serverAddress" class="form-label small">gRPC 서버 주소</label>
-                                <input type="text" id="serverAddress" class="form-control form-control-sm" value="localhost" placeholder="localhost">
-                            </div>
-                            <div class="form-group mb-3">
-                                <label for="serverPort" class="form-label small">포트</label>
-                                <input type="number" id="serverPort" class="form-control form-control-sm" value="50051" min="1" max="65535">
-                            </div>
                             <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="useTls">
-                                <label class="form-check-label small" for="useTls">TLS (HTTPS) 사용</label>
+                                <input class="form-check-input" type="checkbox" id="useUnixDomainSocket">
+                                <label class="form-check-label small" for="useUnixDomainSocket">
+                                    <strong>Unix Domain Socket 사용</strong>
+                                </label>
                             </div>
+
+                            <div id="tcpSettings">
+                                <div class="form-group mb-3">
+                                    <label for="serverAddress" class="form-label small">gRPC 서버 주소</label>
+                                    <input type="text" id="serverAddress" class="form-control form-control-sm" value="localhost" placeholder="localhost">
+                                </div>
+                                <div class="form-group mb-3">
+                                    <label for="serverPort" class="form-label small">포트</label>
+                                    <input type="number" id="serverPort" class="form-control form-control-sm" value="50051" min="1" max="65535">
+                                </div>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="useTls">
+                                    <label class="form-check-label small" for="useTls">TLS (HTTPS) 사용</label>
+                                </div>
+                            </div>
+
+                            <div id="udsSettings" class="d-none">
+                                <div class="form-group mb-3">
+                                    <label for="unixSocketPath" class="form-label small">Unix Socket 경로</label>
+                                    <input type="text" id="unixSocketPath" class="form-control form-control-sm" 
+                                           placeholder="/var/run/grpc.sock" value="/var/run/grpc.sock">
+                                    <small class="text-muted">예: /var/run/grpc.sock</small>
+                                </div>
+                            </div>
+
                             <div class="form-group mb-3">
                                 <label for="timeoutSeconds" class="form-label small">타임아웃 (초)</label>
                                 <input type="number" id="timeoutSeconds" class="form-control form-control-sm" value="30" min="1" max="300">

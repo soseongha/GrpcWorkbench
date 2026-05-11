@@ -98,17 +98,33 @@ public class ProtoController : ControllerBase
     {
         try
         {
-            var session = _sessionService.CreateSession(
-                request.Address ?? "localhost",
-                request.Port ?? 50051,
-                request.UseTls);
+            GrpcSession session;
+
+            if (request.UseUnixDomainSocket && !string.IsNullOrEmpty(request.UnixSocketPath))
+            {
+                session = _sessionService.CreateSession(
+                    request.Address ?? "localhost",
+                    request.Port ?? 50051,
+                    request.UseTls,
+                    true,
+                    request.UnixSocketPath);
+            }
+            else
+            {
+                session = _sessionService.CreateSession(
+                    request.Address ?? "localhost",
+                    request.Port ?? 50051,
+                    request.UseTls);
+            }
 
             return Ok(new
             {
                 sessionId = session.SessionId,
                 address = session.Address,
                 port = session.Port,
-                useTls = session.UseTls
+                useTls = session.UseTls,
+                useUnixDomainSocket = session.UseUnixDomainSocket,
+                unixSocketPath = session.UnixSocketPath
             });
         }
         catch (Exception ex)
@@ -264,19 +280,12 @@ public class ProtoController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Health check failed");
+            //_logger.LogError(ex, "Health check failed");
             return Ok(new { status = "disconnected", message = ex.Message });
         }
     }
 
 
-}
-
-public class CreateSessionRequest
-{
-    public string? Address { get; set; }
-    public int? Port { get; set; }
-    public bool UseTls { get; set; } = false;
 }
 
 public class ProtoTextUploadRequest

@@ -1,0 +1,129 @@
+{
+  "scenario": {
+    "scenarioName": "SampleScenario_List_01",
+    "description": "systems/simulators 모든 요소를 리스트로 관리하는 예시 시나리오",
+    "createTime": {
+      "sec": 1741564800,
+      "nanosec": 123456789
+    },
+    "updateTime": {
+      "sec": 1741564800,
+      "nanosec": 123456789
+    },
+    "snapshot": "/snapshots/SampleScenario_List_01.jpg",
+    "version": "v1.0",
+    "loopFlag": true,
+    "threats": {
+      "TBMs": [
+        {
+          "threatID": 2001,
+          "tbmType": "Type_A",
+          "iff": "HOSTILE",
+          "startTime": 0,
+          "shotdownCount": 1,
+          "launchPoint": {
+            "x": 36.1200,
+            "y": 127.4500,
+            "z": 50.0
+          },
+          "groundImpactPoint": {
+            "x": 36.2200,
+            "y": 127.5500,
+            "z": 0.0
+          },
+          "boosterFlag": false,
+          "debrisFlag": false,
+          "debrisCount": 0,
+          "debrisSeed": 0
+        }
+      ],
+      "aircrafts": [
+        {
+          "threatID": 1001,
+          "aircraftType": "MIG-21",
+          "iff": "HOSTILE",
+          "startTime": 10,
+          "shotdownCount": 1,
+          "crash": "NO",
+          "evasion": "NO",
+          "jamming": {
+            "jammingType": "ANJ",
+            "jammingCondition": "NO",
+            "jammingMode": "NO",
+            "distance": 0,
+            "aimPosition": {
+              "x": 36.1500,
+              "y": 127.4700,
+              "z": 1000.0
+            }
+          },
+          "group": {
+            "groupID": 0,
+            "isGroupLeader": true,
+            "offsetXfromGroupLeader": 0.0,
+            "offsetYfromGroupLeader": 0.0,
+            "offsetZfromGroupLeader": 0.0
+          },
+          "waypoints": [
+            {
+              "waypointID": 0,
+              "position": {
+                "x": 36.1000,
+                "y": 127.4000,
+                "z": 3000.0
+
+              },
+              "velocity": 250.0,
+              "orbitRadius": 0.0,
+              "command": "THROUGH"
+            },
+            {
+              "waypointID": 1,
+              "position": {
+                "x": 36.1500,
+                "y": 127.4500,
+                "z": 3000.0
+
+              },
+              "velocity": 250.0,
+              "orbitRadius": 0.0,
+              "command": "ATTACK"
+            },
+            {
+              "waypointID": 2,
+              "position": {
+                "x": 36.2000,
+                "y": 127.5000,
+                "z": 3000.0
+
+              },
+              "velocity": 250.0,
+              "orbitRadius": 0.0,
+              "command": "THROUGH"
+            }
+          ]
+        }
+      ]
+    },
+
+    "simulators": {
+      "kamdociss": [
+        {}
+      ],
+      "mcrciss": [
+        {}
+      ]
+    },
+
+    "systems": {
+      "mfrs": [
+      ],
+      "lchrs": [
+      ],
+      "ECSs": [
+      ],
+      "ICCs": [
+      ]
+    }
+  }
+}

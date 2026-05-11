@@ -5,6 +5,7 @@ namespace GrpcWorkbench.Services;
 public interface ISessionService
 {
     GrpcSession CreateSession(string address, int port, bool useTls = false);
+    GrpcSession CreateSession(string address, int port, bool useTls, bool useUnixDomainSocket, string? unixSocketPath);
     GrpcSession? GetSession(string sessionId);
     Task UpdateSessionProtoAsync(string sessionId, byte[] protoContent, string fileName);
     void DeleteSession(string sessionId);
@@ -23,17 +24,33 @@ public class SessionService : ISessionService
 
     public GrpcSession CreateSession(string address, int port, bool useTls = false)
     {
+        return CreateSession(address, port, useTls, false, null);
+    }
+
+    public GrpcSession CreateSession(string address, int port, bool useTls, bool useUnixDomainSocket, string? unixSocketPath)
+    {
         var session = new GrpcSession
         {
             SessionId = Guid.NewGuid().ToString(),
             Address = address,
             Port = port,
-            UseTls = useTls
+            UseTls = useTls,
+            UseUnixDomainSocket = useUnixDomainSocket,
+            UnixSocketPath = unixSocketPath
         };
 
         _sessions[session.SessionId] = session;
-        _logger.LogInformation("Created session {SessionId} for {Address}:{Port}", 
-            session.SessionId, address, port);
+
+        if (useUnixDomainSocket)
+        {
+            _logger.LogInformation("Created session {SessionId} for UDS: {UnixSocketPath}", 
+                session.SessionId, unixSocketPath);
+        }
+        else
+        {
+            _logger.LogInformation("Created session {SessionId} for {Address}:{Port}", 
+                session.SessionId, address, port);
+        }
 
         return session;
     }

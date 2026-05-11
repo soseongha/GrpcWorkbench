@@ -12,6 +12,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "솔루션 항목", "솔루�
 		.gitignore = .gitignore
 		Dockerfile = Dockerfile
 		example.proto = example.proto
+		MITS3_scenario_example.json = MITS3_scenario_example.json
+		nuget.config = nuget.config
 		package.json = package.json
 	EndProjectSection
 EndProject

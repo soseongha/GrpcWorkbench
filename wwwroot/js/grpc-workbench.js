@@ -29,18 +29,65 @@ function clearLogs() {
     addLog('로그가 초기화되었습니다.');
 }
 
+// ============ 연결 타입 전환 ============
+function toggleConnectionType() {
+    const useUds = document.getElementById('useUnixDomainSocket').checked;
+    const tcpSettings = document.getElementById('tcpSettings');
+    const udsSettings = document.getElementById('udsSettings');
+
+    if (useUds) {
+        tcpSettings.classList.add('d-none');
+        udsSettings.classList.remove('d-none');
+        addLog('Unix Domain Socket 모드로 전환');
+    } else {
+        tcpSettings.classList.remove('d-none');
+        udsSettings.classList.add('d-none');
+        addLog('TCP/IP 모드로 전환');
+    }
+}
+
 // ============ Step 1: 세션 생성 ============
 async function createSession() {
-    const address = document.getElementById('serverAddress').value || 'localhost';
-    const port = parseInt(document.getElementById('serverPort').value) || 50051;
-    const useTls = document.getElementById('useTls').checked;
+    const useUds = document.getElementById('useUnixDomainSocket').checked;
+
+    let requestBody;
+
+    if (useUds) {
+        const unixSocketPath = document.getElementById('unixSocketPath').value;
+        if (!unixSocketPath) {
+            addLog('Unix Socket 경로를 입력하세요.', 'error');
+            return;
+        }
+
+        requestBody = {
+            address: 'localhost',
+            port: 50051,
+            useTls: false,
+            useUnixDomainSocket: true,
+            unixSocketPath: unixSocketPath
+        };
+
+        addLog(`세션 생성 중... (UDS: ${unixSocketPath})`);
+    } else {
+        const address = document.getElementById('serverAddress').value || 'localhost';
+        const port = parseInt(document.getElementById('serverPort').value) || 50051;
+        const useTls = document.getElementById('useTls').checked;
+
+        requestBody = {
+            address: address,
+            port: port,
+            useTls: useTls,
+            useUnixDomainSocket: false
+        };
+
+        addLog(`세션 생성 중... (${useTls ? 'https' : 'http'}://${address}:${port})`);
+    }
 
     try {
-        addLog(`세션 생성 중... (${useTls ? 'https' : 'http'}://${address}:${port})`);
         const response = await fetch('/api/proto/create-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, port, useTls })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) throw new Error('세션 생성 실패');
@@ -52,12 +99,22 @@ async function createSession() {
         const sessionStatusEl = document.getElementById('sessionStatus');
         const sessionStatusTextEl = document.getElementById('sessionStatusText');
         if (sessionStatusEl) sessionStatusEl.classList.remove('d-none');
-        if (sessionStatusTextEl) sessionStatusTextEl.textContent = `${currentSessionId.substring(0, 8)}...`;
+        if (sessionStatusTextEl) {
+            if (useUds) {
+                sessionStatusTextEl.textContent = `${currentSessionId.substring(0, 8)}... (UDS)`;
+            } else {
+                sessionStatusTextEl.textContent = `${currentSessionId.substring(0, 8)}...`;
+            }
+        }
 
         const uploadBtnEl = document.getElementById('uploadBtn');
         if (uploadBtnEl) uploadBtnEl.disabled = false;
 
-        addLog(`✓ 세션 생성 완료: ${currentSessionId}`, 'success');
+        if (useUds) {
+            addLog(`✓ 세션 생성 완료 (UDS): ${currentSessionId}`, 'success');
+        } else {
+            addLog(`✓ 세션 생성 완료: ${currentSessionId}`, 'success');
+        }
         startHealthCheck();
     } catch (error) {
         addLog(`세션 생성 실패: ${error.message}`, 'error');
@@ -496,15 +553,23 @@ async function sendRequest() {
         }
 
         const data = await response.json();
+        console.log('응답 데이터:', data);
+        addLog(`📡 서버 응답 수신: isSuccess=${data.isSuccess}, elapsedMs=${data.elapsedMilliseconds}`);
 
-        if (data.success || data.isSuccess) {
+        if (data.isSuccess) {
             if (data.messages && Array.isArray(data.messages)) {
+                addLog(`📨 스트리밍 응답 ${data.messages.length}개 메시지 수신`, 'success');
                 displayStreamingResponse(data.messages);
-            } else if (data.result) {
+            } else if (data.responseJson) {
+                addLog(`📨 Unary 응답 수신 (${data.responseJson.length} chars)`, 'success');
                 displayResponse(data);
+            } else {
+                addLog(`⚠ 응답 데이터가 비어있습니다: ${JSON.stringify(data)}`, 'error');
+                displayError('응답 데이터가 비어있습니다.');
             }
         } else {
-            throw new Error(data.error || '요청 실패');
+            addLog(`❌ 서버에서 에러 반환: ${data.errorMessage}`, 'error');
+            throw new Error(data.errorMessage || '요청 실패');
         }
 
         addLog(`✓ 요청 완료`, 'success');
@@ -727,25 +792,30 @@ function stopStreaming() {
 // ============ 응답 표시 ============
 function displayResponse(data) {
     const container = document.getElementById('responseContainer');
+    console.log('displayResponse 호출됨:', data);
+    addLog(`UI 업데이트 중... (isSuccess=${data.isSuccess})`);
 
-    if (data.success) {
+    if (data.isSuccess) {
         try {
-            const parsed = JSON.parse(data.result);
+            const parsed = JSON.parse(data.responseJson);
             container.innerHTML = `
-                <div class="alert alert-success mb-2">요청이 성공했습니다.</div>
+                <div class="alert alert-success mb-2">요청이 성공했습니다. (${data.elapsedMilliseconds}ms)</div>
                 <pre class="bg-light p-3 rounded"><code>${JSON.stringify(parsed, null, 2)}</code></pre>
             `;
+            addLog(`✓ 응답 UI 업데이트 완료`, 'success');
         } catch {
             container.innerHTML = `
-                <div class="alert alert-success mb-2">요청이 성공했습니다.</div>
-                <pre class="bg-light p-3 rounded"><code>${data.result}</code></pre>
+                <div class="alert alert-success mb-2">요청이 성공했습니다. (${data.elapsedMilliseconds}ms)</div>
+                <pre class="bg-light p-3 rounded"><code>${data.responseJson}</code></pre>
             `;
+            addLog(`✓ 응답 UI 업데이트 완료 (파싱 불가)`, 'success');
         }
     } else {
         container.innerHTML = `
             <div class="alert alert-danger mb-2">요청이 실패했습니다.</div>
-            <pre class="bg-light p-3 rounded"><code>${data.error}</code></pre>
+            <pre class="bg-light p-3 rounded"><code>${data.errorMessage}</code></pre>
         `;
+        addLog(`❌ 에러 UI 업데이트 완료`, 'error');
     }
 
     const copyBtn = document.getElementById('copyBtn');
@@ -795,6 +865,9 @@ function copyResponse() {
 
 // ============ 페이지 초기화 ============
 window.addEventListener('load', () => {
+    // 이벤트 리스너 등록
+    initializeEventListeners();
+
     const savedSessionId = localStorage.getItem('grpcSessionId');
     if (savedSessionId) {
         currentSessionId = savedSessionId;
@@ -864,4 +937,13 @@ function updateHealthUI(status) {
     dot.style.backgroundColor = state.color;
     text.textContent = state.label;
     text.className = state.cls;
+}
+
+// ============ 이벤트 리스너 등록 ============
+function initializeEventListeners() {
+    // UDS 토글 이벤트 리스너
+    const udsToggle = document.getElementById('useUnixDomainSocket');
+    if (udsToggle) {
+        udsToggle.addEventListener('change', toggleConnectionType);
+    }
 }

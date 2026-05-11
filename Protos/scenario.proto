@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package scenario;
+
+option csharp_namespace = "ScenarioModule.Grpc";
+
+// ─── 시나리오 콘텐츠 ───
+
+message ScenarioSummary {
+  string id = 1;
+  string scenario_name = 2;
+  string description = 3;
+  string version = 4;
+  int64 file_size_bytes = 5;
+  bool has_screenshot = 6;
+}
+
+message ScenarioContent {
+  string id = 1;
+  bytes json_data = 2;
+  bytes screenshot_image = 3;
+}
+
+// ─── 요청/응답 ───
+
+message ListScenariosRequest {
+  string name_filter = 1;
+  string version_filter = 2;
+  string sort_by = 3;
+  bool sort_desc = 4;
+  int32 page_size = 5;
+  int32 page_number = 6;
+}
+
+
+message ListScenariosResponse {
+  repeated ScenarioSummary scenarios = 1;
+  int32 total_count = 2;
+}
+
+message GetScenarioRequest {
+  string id = 1;
+  repeated string sections = 2;
+  bool include_screenshot = 3;
+}
+
+message GetScenarioResponse {
+  ScenarioContent scenario = 1;
+}
+
+message SaveScenarioRequest {
+  string id = 1;
+  bytes json_data = 2;
+  bytes screenshot_image = 3;
+}
+
+message SaveScenarioResponse {
+  ScenarioSummary summary = 1;
+}
+
+message DeleteScenarioRequest {
+  string id = 1;
+}
+
+message DeleteScenarioResponse {
+  bool success = 1;
+}
+
+message ValidateScenarioRequest {
+  bytes json_data = 1;
+}
+
+
+message ValidateScenarioResponse {
+  bool is_valid = 1;
+  repeated ValidationError errors = 2;
+}
+
+message ValidationError {
+  string path = 1;
+  string message = 2;
+  string schema_keyword = 3;
+}
+
+// ─── 서비스 ───
+
+service ScenarioService {
+  rpc ListScenarios (ListScenariosRequest) returns (ListScenariosResponse);
+  rpc GetScenario (GetScenarioRequest) returns (GetScenarioResponse);
+  rpc SaveScenario (SaveScenarioRequest) returns (SaveScenarioResponse);
+  rpc DeleteScenario (DeleteScenarioRequest) returns (DeleteScenarioResponse);
+  rpc ValidateScenario (ValidateScenarioRequest) returns (ValidateScenarioResponse);
+}
