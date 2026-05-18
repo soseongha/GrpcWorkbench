@@ -76,6 +76,13 @@ public class DynamicProtoCompiler : IDynamicProtoCompiler
         if (string.IsNullOrEmpty(protocPath))
             throw new InvalidOperationException("protoc not found. Please install Grpc.Tools");
 
+        var includePath = FindWellKnownTypesIncludePath(protocPath);
+        if (string.IsNullOrWhiteSpace(includePath))
+        {
+            includePath = CreateFallbackWellKnownTypesInclude(tempDir);
+            _logger.LogWarning("Well-known types include path not found. Using fallback proto definitions at: {IncludePath}", includePath);
+        }
+
         var pluginPath = FindGrpcPlugin();
         if (string.IsNullOrEmpty(pluginPath))
             throw new InvalidOperationException("grpc_csharp_plugin not found");
@@ -85,6 +92,10 @@ public class DynamicProtoCompiler : IDynamicProtoCompiler
 
         var arguments = new StringBuilder();
         arguments.Append($"-I=\"{tempDir}\" ");
+        if (!string.IsNullOrWhiteSpace(includePath))
+        {
+            arguments.Append($"-I=\"{includePath}\" ");
+        }
         arguments.Append($"--csharp_out=\"{tempDir}\" ");
         arguments.Append($"--grpc_out=\"{tempDir}\" ");
         arguments.Append($"--plugin=protoc-gen-grpc=\"{pluginPath}\" ");
@@ -303,5 +314,92 @@ public class DynamicProtoCompiler : IDynamicProtoCompiler
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// google/protobuf/*.proto(well-known types) include 경로 찾기
+    /// </summary>
+    private string? FindWellKnownTypesIncludePath(string protocPath)
+    {
+        // 1. 앱 디렉토리의 tools/include (컨테이너/배포 환경)
+        var appIncludePath = Path.Combine(AppContext.BaseDirectory, "tools", "include");
+        if (File.Exists(Path.Combine(appIncludePath, "google", "protobuf", "empty.proto")))
+            return appIncludePath;
+
+        // 2. protoc 실행 파일 주변 경로 탐색
+        var protocDir = Path.GetDirectoryName(protocPath);
+        if (!string.IsNullOrWhiteSpace(protocDir))
+        {
+            var cursor = new DirectoryInfo(protocDir);
+            for (var i = 0; i < 8 && cursor != null; i++)
+            {
+                var includeCandidate = Path.Combine(cursor.FullName, "include");
+                if (File.Exists(Path.Combine(includeCandidate, "google", "protobuf", "empty.proto")))
+                    return includeCandidate;
+
+                var grpcToolsIncludeCandidate = Path.Combine(cursor.FullName, "build", "native", "include");
+                if (File.Exists(Path.Combine(grpcToolsIncludeCandidate, "google", "protobuf", "empty.proto")))
+                    return grpcToolsIncludeCandidate;
+
+                cursor = cursor.Parent;
+            }
+        }
+
+        // 3. NuGet grpc.tools 경로
+        var nugetTools = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".nuget", "packages", "grpc.tools");
+
+        if (Directory.Exists(nugetTools))
+        {
+            var emptyProtoPaths = Directory.GetFiles(nugetTools, "empty.proto", SearchOption.AllDirectories)
+                .Where(path => path.Replace('\\', '/')
+                    .EndsWith("google/protobuf/empty.proto", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (emptyProtoPaths.Length > 0)
+            {
+                // .../include/google/protobuf/empty.proto -> include
+                var includeDir = Directory.GetParent(emptyProtoPaths[0])?.Parent?.Parent?.FullName;
+                if (!string.IsNullOrWhiteSpace(includeDir))
+                    return includeDir;
+            }
+        }
+
+        return null;
+    }
+
+    private static string CreateFallbackWellKnownTypesInclude(string tempDir)
+    {
+        var includeRoot = Path.Combine(tempDir, "wkt_include");
+        var googleProtobufDir = Path.Combine(includeRoot, "google", "protobuf");
+        Directory.CreateDirectory(googleProtobufDir);
+
+        File.WriteAllText(Path.Combine(googleProtobufDir, "empty.proto"),
+            "syntax = \"proto3\";\npackage google.protobuf;\nmessage Empty {}\n");
+
+        File.WriteAllText(Path.Combine(googleProtobufDir, "timestamp.proto"),
+            "syntax = \"proto3\";\npackage google.protobuf;\nmessage Timestamp { int64 seconds = 1; int32 nanos = 2; }\n");
+
+        File.WriteAllText(Path.Combine(googleProtobufDir, "wrappers.proto"),
+            "syntax = \"proto3\";\npackage google.protobuf;\n"
+            + "message DoubleValue { double value = 1; }\n"
+            + "message FloatValue { float value = 1; }\n"
+            + "message Int64Value { int64 value = 1; }\n"
+            + "message UInt64Value { uint64 value = 1; }\n"
+            + "message Int32Value { int32 value = 1; }\n"
+            + "message UInt32Value { uint32 value = 1; }\n"
+            + "message BoolValue { bool value = 1; }\n"
+            + "message StringValue { string value = 1; }\n"
+            + "message BytesValue { bytes value = 1; }\n");
+
+        File.WriteAllText(Path.Combine(googleProtobufDir, "struct.proto"),
+            "syntax = \"proto3\";\npackage google.protobuf;\n"
+            + "message Struct { map<string, Value> fields = 1; }\n"
+            + "message Value { oneof kind { NullValue null_value = 1; double number_value = 2; string string_value = 3; bool bool_value = 4; Struct struct_value = 5; ListValue list_value = 6; } }\n"
+            + "enum NullValue { NULL_VALUE = 0; }\n"
+            + "message ListValue { repeated Value values = 1; }\n");
+
+        return includeRoot;
     }
 }

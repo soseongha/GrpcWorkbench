@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-workbench
+  labels:
+    app: grpc-workbench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grpc-workbench
+  template:
+    metadata:
+      labels:
+        app: grpc-workbench
+    spec:
+      containers:
+        - name: grpc-workbench
+          image: localhost:5000/grpc-workbench:v1.0.5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://+:5226"
+            - name: UDS_SOCKET_PATH
+              value: "/tmp/grpc.sock"
+          ports:
+            - containerPort: 5226
+              name: http
+          volumeMounts:
+            - name: uds-socket
+              mountPath: /tmp
+      volumes:
+        - name: uds-socket
+          persistentVolumeClaim:
+            claimName: uds-shared-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpc-workbench
+  labels:
+    app: grpc-workbench
+spec:
+  type: ClusterIP
+  selector:
+    app: grpc-workbench
+  ports:
+    - name: http
+      port: 5226
+      targetPort: http

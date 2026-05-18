@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package demo.ui.v1;
+
+option csharp_namespace = "GrpcWorkbench.Protos.UiInputSample";
+
+import "google/protobuf/empty.proto";
+
+service UiInputSampleService {
+  rpc Submit (SubmitRequest) returns (SubmitReply);
+  rpc Health (google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+enum Priority {
+  PRIORITY_UNSPECIFIED = 0;
+  PRIORITY_LOW = 1;
+  PRIORITY_MEDIUM = 2;
+  PRIORITY_HIGH = 3;
+}
+
+message SubmitRequest {
+  string title = 1;
+
+  // enum 선택 테스트
+  Priority priority = 2;
+
+  // repeated(배열) 입력 테스트
+  repeated string tags = 3;
+  repeated int32 scores = 4;
+  repeated Priority watchers = 5;
+
+  // map/복잡 객체는 현재 UI에서 Raw JSON textarea로 입력
+  map<string, string> labels = 6;
+  map<string, int32> counters = 7;
+
+  // 중첩 객체(현재 UI에서는 Raw JSON textarea 입력 권장)
+  User owner = 8;
+}
+
+message User {
+  string id = 1;
+  string name = 2;
+}
+
+message SubmitReply {
+  bool ok = 1;
+  string message = 2;
+}

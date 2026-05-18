@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-echo-server
+  labels:
+    app: grpc-echo-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grpc-echo-server
+  template:
+    metadata:
+      labels:
+        app: grpc-echo-server
+    spec:
+      containers:
+        - name: grpc-echo-server
+          image: grpc-echo-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: UDS_SOCKET_PATH
+              value: "/tmp/grpc.sock"
+          volumeMounts:
+            - name: uds-socket
+              mountPath: /tmp
+      volumes:
+        - name: uds-socket
+          persistentVolumeClaim:
+            claimName: uds-shared-pvc

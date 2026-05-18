@@ -388,78 +388,333 @@ function createRequestForm(method) {
     const requestPlaceholder = document.getElementById('requestPlaceholder');
     const requestForm = document.getElementById('requestForm');
 
+    if (!requestForm) return;
+    requestForm.innerHTML = '';
+
     if (!method.inputSchema) {
-        requestFormContainer.classList.add('d-none');
-        requestPlaceholder.classList.remove('d-none');
+        if (requestFormContainer) requestFormContainer.classList.add('d-none');
+        if (requestPlaceholder) requestPlaceholder.classList.remove('d-none');
         return;
     }
 
     try {
         const schema = JSON.parse(method.inputSchema);
-        const properties = schema.properties || {};
+        renderSchemaObject(requestForm, schema?.properties || {}, 0);
 
-        requestForm.innerHTML = '';
-
-        Object.entries(properties).forEach(([fieldName, fieldInfo]) => {
-            const formGroup = document.createElement('div');
-            formGroup.className = 'form-group mb-3';
-
-            const label = document.createElement('label');
-            label.htmlFor = `field_${fieldName}`;
-            label.className = 'form-label small';
-            label.textContent = `${fieldName} (${fieldInfo.type})`;
-
-            let input;
-            if (fieldInfo.type === 'integer') {
-                input = document.createElement('input');
-                input.type = 'number';
-            } else if (fieldInfo.type === 'boolean') {
-                input = document.createElement('select');
-                input.innerHTML = '<option value="false">false</option><option value="true">true</option>';
-            } else {
-                input = document.createElement('input');
-                input.type = 'text';
-            }
-
-            input.id = `field_${fieldName}`;
-            input.className = 'form-control form-control-sm';
-            input.placeholder = `${fieldName} 입력`;
-            input.dataset.fieldName = fieldName;
-            input.dataset.fieldType = fieldInfo.type;
-
-            formGroup.appendChild(label);
-            formGroup.appendChild(input);
-            requestForm.appendChild(formGroup);
-        });
-
-        requestFormContainer.classList.remove('d-none');
-        requestPlaceholder.classList.add('d-none');
+        if (requestPlaceholder) requestPlaceholder.classList.add('d-none');
+        if (requestFormContainer) requestFormContainer.classList.remove('d-none');
     } catch (e) {
-        requestFormContainer.classList.add('d-none');
-        requestPlaceholder.classList.remove('d-none');
+        if (requestFormContainer) requestFormContainer.classList.add('d-none');
+        if (requestPlaceholder) requestPlaceholder.classList.remove('d-none');
     }
 }
 
 function buildRequestJson() {
-    const form = document.getElementById('requestForm');
-    const inputs = form.querySelectorAll('input, select');
-    const jsonObj = {};
+    if (currentSelectedMethod?.inputType === 'google.protobuf.Empty') {
+        return '{}';
+    }
 
-    inputs.forEach(input => {
-        const fieldName = input.dataset.fieldName;
-        const fieldType = input.dataset.fieldType;
-        let value = input.value;
+    const requestForm = document.getElementById('requestForm');
+    if (!requestForm) return '{}';
 
-        if (fieldType === 'integer') {
-            if (value !== '') jsonObj[fieldName] = parseInt(value);
-        } else if (fieldType === 'boolean') {
-            jsonObj[fieldName] = value === 'true';
-        } else if (value !== '') {
-            jsonObj[fieldName] = value;
-        }
+    const requestObject = collectSchemaObject(requestForm);
+    return JSON.stringify(requestObject ?? {});
+}
+
+function renderSchemaObject(container, properties, depth) {
+    Object.entries(properties).forEach(([fieldName, fieldSchema]) => {
+        const fieldRow = document.createElement('div');
+        fieldRow.className = 'schema-field-row mb-2';
+        fieldRow.dataset.fieldName = fieldName;
+
+        const label = document.createElement('label');
+        label.className = 'form-label small mb-1';
+        label.textContent = `${fieldName} (${getSchemaTypeLabel(fieldSchema)})`;
+        fieldRow.appendChild(label);
+
+        const editor = createValueEditor(fieldSchema, depth + 1);
+        fieldRow.appendChild(editor);
+        container.appendChild(fieldRow);
     });
+}
 
-    return JSON.stringify(jsonObj);
+function createValueEditor(schema, depth) {
+    const editorType = schema?.type || 'object';
+
+    if (editorType === 'array') {
+        return createArrayEditor(schema, depth);
+    }
+
+    if (editorType === 'object') {
+        if (schema?.additionalProperties) {
+            return createRawJsonEditor('{\n  "key": "value"\n}');
+        }
+        return createObjectEditor(schema, depth);
+    }
+
+    return createScalarEditor(schema);
+}
+
+function createScalarEditor(schema) {
+    let input;
+
+    if (Array.isArray(schema?.enum) && schema.enum.length > 0) {
+        input = document.createElement('select');
+        input.innerHTML = ['<option value="">-- 선택 --</option>']
+            .concat(schema.enum.map(v => `<option value="${v}">${v}</option>`))
+            .join('');
+    } else if (schema?.type === 'boolean') {
+        input = document.createElement('select');
+        input.innerHTML = '<option value="">-- 선택 --</option><option value="true">true</option><option value="false">false</option>';
+    } else {
+        input = document.createElement('input');
+        input.type = schema?.type === 'integer' || schema?.type === 'number' ? 'number' : 'text';
+        if (schema?.type === 'number') input.step = 'any';
+    }
+
+    input.className = 'form-control form-control-sm';
+    input.dataset.editorType = 'scalar';
+    input.dataset.scalarType = schema?.type || 'string';
+    return input;
+}
+
+function createObjectEditor(schema, depth) {
+    const properties = schema?.properties || {};
+    if (!schema?.additionalProperties && Object.keys(properties).length === 0) {
+        return createRawJsonEditor('{\n  \"field\": \"value\"\n}');
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.dataset.editorType = 'object';
+    wrapper.className = depth > 1 ? 'border rounded p-2 bg-light-subtle' : '';
+
+    if (schema?.referenceType) {
+        const hint = document.createElement('div');
+        hint.className = 'small text-muted mb-2';
+        hint.textContent = schema.referenceType;
+        wrapper.appendChild(hint);
+    }
+
+    renderSchemaObject(wrapper, properties, depth);
+    return wrapper;
+}
+
+function createRawJsonEditor(placeholder) {
+    const textarea = document.createElement('textarea');
+    textarea.className = 'form-control form-control-sm font-monospace';
+    textarea.rows = 4;
+    textarea.placeholder = placeholder;
+    textarea.dataset.editorType = 'rawjson';
+    return textarea;
+}
+
+function createArrayEditor(schema, depth) {
+    const wrapper = document.createElement('div');
+    wrapper.dataset.editorType = 'array';
+    wrapper.dataset.itemSchema = JSON.stringify(schema?.items || { type: 'string' });
+
+    const actions = document.createElement('div');
+    actions.className = 'mb-2';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-outline-secondary btn-sm py-0 px-2';
+    addBtn.textContent = `+ 항목 추가 (${getSchemaTypeLabel(schema?.items || { type: 'string' })})`;
+    addBtn.onclick = () => addArrayItem(wrapper, depth);
+    actions.appendChild(addBtn);
+
+    const items = document.createElement('div');
+    items.className = 'schema-array-items d-flex flex-column gap-2';
+
+    wrapper.appendChild(actions);
+    wrapper.appendChild(items);
+    return wrapper;
+}
+
+function addArrayItem(arrayEditor, depth) {
+    const itemsContainer = arrayEditor.querySelector('.schema-array-items');
+    const itemSchema = JSON.parse(arrayEditor.dataset.itemSchema || '{"type":"string"}');
+
+    const itemRow = document.createElement('div');
+    itemRow.className = 'd-flex gap-2 align-items-start';
+
+    const itemEditorHost = document.createElement('div');
+    itemEditorHost.className = 'flex-grow-1';
+    itemEditorHost.appendChild(createValueEditor(itemSchema, depth + 1));
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-outline-danger btn-sm';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => itemRow.remove();
+
+    itemRow.appendChild(itemEditorHost);
+    itemRow.appendChild(removeBtn);
+    itemsContainer.appendChild(itemRow);
+}
+
+function createMapEditor(valueSchema, depth) {
+    const wrapper = document.createElement('div');
+    wrapper.dataset.editorType = 'map';
+    wrapper.dataset.valueSchema = JSON.stringify(valueSchema || { type: 'string' });
+
+    const actions = document.createElement('div');
+    actions.className = 'mb-2';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-outline-secondary btn-sm py-0 px-2';
+    addBtn.textContent = '+ 엔트리 추가';
+    addBtn.onclick = () => addMapEntry(wrapper, depth);
+    actions.appendChild(addBtn);
+
+    const entries = document.createElement('div');
+    entries.className = 'schema-map-entries d-flex flex-column gap-2';
+
+    wrapper.appendChild(actions);
+    wrapper.appendChild(entries);
+    return wrapper;
+}
+
+function addMapEntry(mapEditor, depth) {
+    const entries = mapEditor.querySelector('.schema-map-entries');
+    const valueSchema = JSON.parse(mapEditor.dataset.valueSchema || '{"type":"string"}');
+
+    const row = document.createElement('div');
+    row.className = 'd-flex gap-2 align-items-start';
+
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.placeholder = 'key';
+    keyInput.className = 'form-control form-control-sm';
+    keyInput.style.maxWidth = '180px';
+
+    const valueHost = document.createElement('div');
+    valueHost.className = 'flex-grow-1';
+    valueHost.appendChild(createValueEditor(valueSchema, depth + 1));
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-outline-danger btn-sm';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => row.remove();
+
+    row.appendChild(keyInput);
+    row.appendChild(valueHost);
+    row.appendChild(removeBtn);
+    entries.appendChild(row);
+}
+
+function collectSchemaObject(container) {
+    const result = {};
+    Array.from(container.children)
+        .filter(child => child.classList.contains('schema-field-row'))
+        .forEach(fieldRow => {
+            const fieldName = fieldRow.dataset.fieldName;
+            const editor = fieldRow.querySelector('[data-editor-type]');
+            const value = collectEditorValue(editor);
+            if (value !== undefined) {
+                result[fieldName] = value;
+            }
+        });
+
+    return result;
+}
+
+function collectEditorValue(editor) {
+    if (!editor) return undefined;
+
+    const editorType = editor.dataset.editorType;
+
+    if (editorType === 'scalar') {
+        return collectScalarValue(editor);
+    }
+
+    if (editorType === 'object') {
+        const value = collectSchemaObject(editor);
+        return Object.keys(value).length > 0 ? value : undefined;
+    }
+
+    if (editorType === 'array') {
+        const items = [];
+        const rows = editor.querySelector('.schema-array-items')?.children || [];
+        Array.from(rows).forEach(row => {
+            const itemEditor = row.querySelector('[data-editor-type]');
+            const itemValue = collectEditorValue(itemEditor);
+            if (itemValue !== undefined) {
+                items.push(itemValue);
+            }
+        });
+        return items.length > 0 ? items : undefined;
+    }
+
+    if (editorType === 'map') {
+        const mapObject = {};
+        const rows = editor.querySelector('.schema-map-entries')?.children || [];
+        Array.from(rows).forEach(row => {
+            const key = row.querySelector('input')?.value?.trim();
+            const valueEditor = row.querySelector('[data-editor-type]');
+            const value = collectEditorValue(valueEditor);
+            if (key && value !== undefined) {
+                mapObject[key] = value;
+            }
+        });
+        return Object.keys(mapObject).length > 0 ? mapObject : undefined;
+    }
+
+    if (editorType === 'rawjson') {
+        const raw = editor.value?.trim();
+        if (!raw) return undefined;
+
+        try {
+            return JSON.parse(raw);
+        } catch {
+            throw new Error('객체/맵 필드의 JSON 형식이 올바르지 않습니다.');
+        }
+    }
+
+    return undefined;
+}
+
+function collectScalarValue(input) {
+    const scalarType = input.dataset.scalarType || 'string';
+    const raw = input.value;
+
+    if (raw === '' || raw == null) return undefined;
+
+    if (scalarType === 'integer') {
+        return Number.parseInt(raw, 10);
+    }
+
+    if (scalarType === 'number') {
+        return Number.parseFloat(raw);
+    }
+
+    if (scalarType === 'boolean') {
+        return raw === 'true';
+    }
+
+    return raw;
+}
+
+function getSchemaTypeLabel(schema) {
+    if (!schema) return 'unknown';
+
+    if (schema.type === 'array') {
+        return `repeated ${getSchemaTypeLabel(schema.items || { type: 'string' })}`;
+    }
+
+    if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+        return 'enum';
+    }
+
+    if (schema.additionalProperties) {
+        return `map<string, ${getSchemaTypeLabel(schema.additionalProperties)}>`;
+    }
+
+    if (schema.referenceType) {
+        return schema.referenceType;
+    }
+
+    return schema.type || 'object';
 }
 
 // ============ Step 4: 요청 전송 ============
@@ -469,8 +724,16 @@ async function sendRequest() {
         return;
     }
 
-    const payload = buildRequestJson();
-    if (!payload || payload === '{}') {
+    let payload;
+    try {
+        payload = buildRequestJson();
+    } catch (error) {
+        addLog(`요청 데이터 오류: ${error.message}`, 'error');
+        displayError(error.message);
+        return;
+    }
+
+    if (!payload) {
         addLog('요청 데이터를 입력하세요.', 'error');
         return;
     }
@@ -586,8 +849,16 @@ async function startStreaming() {
         return;
     }
 
-    const payload = buildRequestJson();
-    if (!payload || payload === '{}') {
+    let payload;
+    try {
+        payload = buildRequestJson();
+    } catch (error) {
+        addLog(`요청 데이터 오류: ${error.message}`, 'error');
+        displayError(error.message);
+        return;
+    }
+
+    if (!payload) {
         addLog('요청 데이터를 입력하세요.', 'error');
         return;
     }
