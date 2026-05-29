@@ -580,8 +580,19 @@ else
         {
             var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
             var protoBytes = await File.ReadAllBytesAsync(path);
-            _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
+
+            try
+            {
+                _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
+            }
+            catch (Exception ex)
+            {
+                _bridgeSchemaAssembly = null;
+                _bridgeLoadError = null;
+                Snackbar.Add($"bridge payload 타입 복원 비활성화: {ex.Message}", Severity.Info);
+            }
+
             var next = services
                 .SelectMany(service => service.Methods)
                 .Where(method => !string.IsNullOrWhiteSpace(method.InputType) && !string.Equals(method.InputType, "google.protobuf.Empty", StringComparison.Ordinal))
@@ -613,7 +624,6 @@ else
         {
             _bridgeSchemaAssembly = null;
             _bridgeLoadError = $"nats/DDSSim.proto 로드 실패: {ex.Message}";
-            _bridgePublishMode = false;
         }
     }
 
