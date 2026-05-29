@@ -82,7 +82,7 @@ else
             </div>
 
             <div class="wb-inline-note mt-3">
-                NATS 화면도 DDS처럼 수신 subject 선택, 메시지 목록, 상세 payload 확인 순서로 정리했습니다. 일반 subject 테스트와 스키마 기반 bridge 발행을 함께 다룰 수 있고, 상세창에서는 JSON, base64, hex를 같이 확인할 수 있습니다.
+                NATS 화면은 수신/송신 기록 확인에 집중하고, 실제 송신 내용 작성과 반복 실행은 아래 NATS 자동화에서 다룹니다. 상세창에서는 bridge protobuf를 JSON으로 복원해 보고, 그 외 payload는 JSON, base64, hex로 확인할 수 있습니다.
             </div>
         </div>
     </div>
@@ -247,92 +247,21 @@ else
                     <MudIcon Icon="@Icons.Material.Filled.NorthEast" Size="Size.Small" Color="Color.Primary" />
                     <div>
                         <div class="wb-panel-kicker">송신</div>
-                        <div class="wb-panel-heading">발행 subject와 보낸 payload를 추적합니다</div>
+                        <div class="wb-panel-heading">자동화와 시나리오가 보낸 payload를 추적합니다</div>
                     </div>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@outbound.Count 메시지</MudChip>
                 </div>
 
                 <div class="wb-subpanel mb-3 pa-3">
-                    <div class="wb-panel-kicker">발행 작성</div>
-                    <div class="wb-panel-heading">일반 subject 테스트와 스키마 기반 bridge 메시지 발행을 바로 보냅니다</div>
-
-                    <div class="mt-3">
-                        @if (_bridgeMessages.Count > 0)
-                        {
-                            <MudToggleGroup T="bool" Value="_bridgePublishMode" ValueChanged="OnBridgePublishModeChanged"
-                                            Color="Color.Primary" Size="Size.Small" CheckMark="false"
-                                            SelectionMode="SelectionMode.SingleSelection">
-                                <MudToggleItem Value="true" Text="정의 메시지" />
-                                <MudToggleItem Value="false" Text="수동" />
-                            </MudToggleGroup>
-                        }
-
-                        @if (_bridgePublishMode && _bridgeMessages.Count > 0)
-                        {
-                            <MudSelect T="string" Value="_selectedBridgeMessageType" ValueChanged="OnBridgeMessageTypeChanged"
-                                       Label="스키마 메시지" Variant="Variant.Outlined" Margin="Margin.Dense" FullWidth="true">
-                                @foreach (var option in _bridgeMessages)
-                                {
-                                    <MudSelectItem T="string" Value="@option.TypeName">@option.TypeName</MudSelectItem>
-                                }
-                            </MudSelect>
-                            <MudTextField Value="@_publishSubject" Label="자동 생성 subject"
-                                          Variant="Variant.Outlined" Margin="Margin.Dense" FullWidth="true" ReadOnly="true" />
-
-                            <div class="d-flex flex-wrap align-center mt-2" style="gap:8px;">
-                                <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);margin:0;">Payload 편집</MudText>
-                                <MudSpacer />
-                                @if (_publishSchemaFields.Count > 0)
-                                {
-                                    <MudToggleGroup T="bool" Value="_publishRawJsonMode" ValueChanged="OnPublishRawModeChanged"
-                                                    Color="Color.Primary" Size="Size.Small" CheckMark="false"
-                                                    SelectionMode="SelectionMode.SingleSelection">
-                                        <MudToggleItem Value="false" Text="필드" />
-                                        <MudToggleItem Value="true" Text="JSON" />
-                                    </MudToggleGroup>
-                                }
-                            </div>
-
-                            @if (!_publishRawJsonMode && _publishSchemaFields.Count > 0)
-                            {
-                                <div class="wb-scroll mt-2" style="max-height:34vh;overflow-y:auto;">
-                                    @foreach (var field in _publishSchemaFields)
-                                    {
-                                        <div class="mb-2">
-                                            <SchemaFormField Field="field" OnChanged="BuildPublishJsonFromForm" />
-                                        </div>
-                                    }
-                                </div>
-                            }
-                            else
-                            {
-                                <MudTextField @bind-Value="_publishPayload" Label="bridge payload JSON"
-                                              Variant="Variant.Outlined" Margin="Margin.Dense" Lines="8" FullWidth="true" Class="wb-mono" />
-                            }
-
-                            <div class="wb-inline-note mt-2">선택한 메시지는 현재 bridge 규칙에 맞춰 dds.sidecar.to-dds.&lt;MessageType&gt; subject로 protobuf binary 직렬화되어 발행됩니다.</div>
-                        }
-                        else
-                        {
-                            <MudTextField @bind-Value="_publishSubject" Label="발행 subject" Placeholder="example.subject"
-                                          Variant="Variant.Outlined" Margin="Margin.Dense" FullWidth="true" />
-                            <MudTextField @bind-Value="_publishPayload" Label="payload" Placeholder='{"hello":"world"}'
-                                          Variant="Variant.Outlined" Margin="Margin.Dense" Lines="8" FullWidth="true" Class="wb-mono" />
-                        }
-
-                        <div class="d-flex align-center flex-wrap mt-2" style="gap:8px;">
-                            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
-                                       OnClick="Publish" StartIcon="@Icons.Material.Filled.Send">
-                                발행
-                            </MudButton>
-                            <div class="wb-inline-note">일반 subject는 UTF-8 텍스트로, bridge subject는 protobuf binary로 송신됩니다.</div>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(_bridgeLoadError))
-                        {
-                            <div class="wb-inline-note mt-2">@_bridgeLoadError</div>
-                        }
+                    <div class="wb-panel-kicker">송신 기록</div>
+                    <div class="wb-panel-heading">송신 내용 작성은 아래 NATS 자동화에서 하고, 이 영역은 실제로 발행된 결과만 보여줍니다</div>
+                    <div class="wb-inline-note mt-3">
+                        수동 발행, 반복 발행, 수신-응답 규칙 편집은 아래 시나리오/자동화 패널에서 구성하세요. 이 영역에서는 실제로 전송된 subject와 payload 기록만 확인합니다.
                     </div>
+                    @if (!string.IsNullOrWhiteSpace(_bridgeLoadError))
+                    {
+                        <div class="wb-inline-note mt-2">@_bridgeLoadError</div>
+                    }
                 </div>
 
                 @if (outbound.Count == 0)
@@ -986,21 +915,69 @@ else
         }
     }
 
-    private static string ResolvePayloadView(NatsMessageEntry message, NatsPayloadViewMode mode)
+    private string ResolvePayloadView(NatsMessageEntry message, NatsPayloadViewMode mode)
         => mode switch
         {
             NatsPayloadViewMode.Text => message.PayloadText,
             NatsPayloadViewMode.Base64 => message.PayloadBase64,
             NatsPayloadViewMode.Hex => ConvertBase64ToHex(message.PayloadBase64),
-            _ => message.PayloadText,
+            _ => SelectAutomaticPayloadView(message),
         };
 
-    private static string? ResolvePayloadJson(NatsMessageEntry? message, NatsPayloadViewMode mode)
+    private string? ResolvePayloadJson(NatsMessageEntry? message, NatsPayloadViewMode mode)
     {
         if (message == null || mode != NatsPayloadViewMode.Auto)
             return null;
 
-        return TryPrettyJson(ResolvePayloadView(message, mode));
+        return TryResolveBridgePayloadJson(message)
+            ?? TryPrettyJson(SelectAutomaticPayloadView(message));
+    }
+
+    private string SelectAutomaticPayloadView(NatsMessageEntry message)
+        => LooksReadableText(message.PayloadText) ? message.PayloadText : message.PayloadBase64;
+
+    private string? TryResolveBridgePayloadJson(NatsMessageEntry message)
+    {
+        var (topic, direction) = ParseBridgeSubject(message.Subject);
+        if (direction == null)
+            return null;
+
+        var messageType = ResolveBridgeMessageType(topic);
+        if (messageType == null)
+            return null;
+
+        try
+        {
+            var parser = messageType.GetProperty("Parser")?.GetValue(null);
+            var parseFromMethod = parser?.GetType().GetMethod("ParseFrom", [typeof(byte[])]);
+            if (parser == null || parseFromMethod == null)
+                return null;
+
+            var bytes = Convert.FromBase64String(message.PayloadBase64);
+            if (parseFromMethod.Invoke(parser, [bytes]) is not IMessage proto)
+                return null;
+
+            return JsonMessageConverter.MessageToJson(proto);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool LooksReadableText(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return true;
+
+        var printable = 0;
+        foreach (var ch in payload)
+        {
+            if (ch == '\r' || ch == '\n' || ch == '\t' || !char.IsControl(ch))
+                printable++;
+        }
+
+        return printable >= payload.Length * 0.85;
     }
 
     private static string ConvertBase64ToHex(string base64)
