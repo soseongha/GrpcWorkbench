@@ -6,10 +6,10 @@
 @using ASAP.Models.Session
 @using ASAP.Models.Ui
 @using ASAP.Nats
-@using DdsSim
 @using Google.Protobuf
 @inject INatsSessionService NatsSessions
 @inject IProtoLoader ProtoLoader
+@inject IDynamicProtoCompiler ProtoCompiler
 @inject IJsonMessageConverter JsonMessageConverter
 @inject IWebHostEnvironment WebHostEnv
 @inject ISnackbar Snackbar
@@ -33,7 +33,7 @@ else
         : subscriptions.FirstOrDefault(x => x.Subject == selectedInboundSubject);
     var selectedInboundMessages = string.IsNullOrWhiteSpace(selectedInboundSubject)
         ? []
-        : inbound.Where(x => x.Subject == selectedInboundSubject).ToList();
+        : GetSelectedInboundMessages(subscriptions, inbound, selectedInboundSubject);
     var selectedOutboundMessages = string.IsNullOrWhiteSpace(selectedOutboundSubject)
         ? []
         : outbound.Where(x => x.Subject == selectedOutboundSubject).ToList();
@@ -166,7 +166,7 @@ else
                         <div class="wb-scroll wb-message-list">
                             @foreach (var subscription in subscriptions)
                             {
-                                var count = inbound.Count(x => x.Subject == subscription.Subject);
+                                var count = inbound.Count(x => SubjectMatchesPattern(subscription.Subject, x.Subject));
                                 <button type="button"
                                         class="wb-call-row @(selectedInboundSubject == subscription.Subject ? "is-selected" : null)"
                                         @onclick="@(() => SelectInboundSubject(subscription.Subject))"
@@ -461,12 +461,13 @@ else
     private readonly List<SchemaField> _publishSchemaFields = [];
     private string? _selectedBridgeMessageType;
     private string? _bridgeLoadError;
+    private System.Reflection.Assembly? _bridgeSchemaAssembly;
     private bool _bridgePublishMode = true;
     private bool _publishRawJsonMode;
     private NatsPayloadViewMode _inboundPayloadViewMode;
     private NatsPayloadViewMode _outboundPayloadViewMode;
 
-    private static readonly string[] SubscriptionPresets = [">", "dds.sidecar.to-dds.*", "telemetry.*", "events.>"];
+    private static readonly string[] SubscriptionPresets = [">", "dds.sidecar.to-nats.>", "dds.sidecar.to-dds.>", "telemetry.*", "events.>"];
 
     protected override void OnInitialized()
     {
@@ -590,6 +591,18 @@ else
             .OrderBy(x => x)
             .ToList();
 
+    private static List<NatsMessageEntry> GetSelectedInboundMessages(
+        IReadOnlyList<NatsSubscriptionInfo> subscriptions,
+        IReadOnlyList<NatsMessageEntry> inbound,
+        string selectedInboundSubject)
+    {
+        var selectedSubscription = subscriptions.FirstOrDefault(x => string.Equals(x.Subject, selectedInboundSubject, StringComparison.Ordinal));
+        if (selectedSubscription != null)
+            return inbound.Where(x => SubjectMatchesPattern(selectedSubscription.Subject, x.Subject)).ToList();
+
+        return inbound.Where(x => string.Equals(x.Subject, selectedInboundSubject, StringComparison.Ordinal)).ToList();
+    }
+
     private static List<string> GetOutboundSubjects(IReadOnlyList<NatsMessageEntry> outbound)
         => outbound.Select(x => x.Subject)
             .Distinct(StringComparer.Ordinal)
@@ -636,8 +649,9 @@ else
     {
         try
         {
-            var path = Path.Combine(WebHostEnv.WebRootPath, "proto", "DDSSim.proto");
+            var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
             var protoBytes = await File.ReadAllBytesAsync(path);
+            _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
             var next = services
                 .SelectMany(service => service.Methods)
@@ -668,7 +682,8 @@ else
         }
         catch (Exception ex)
         {
-            _bridgeLoadError = $"스키마 bridge 메시지 로드 실패: {ex.Message}";
+            _bridgeSchemaAssembly = null;
+            _bridgeLoadError = $"nats/DDSSim.proto 로드 실패: {ex.Message}";
             _bridgePublishMode = false;
         }
     }
@@ -742,8 +757,40 @@ else
         return direction == null ? subject : $"raw subject: {subject}";
     }
 
-    private static Type? ResolveBridgeMessageType(string typeName)
-        => typeof(DDSSimReflection).Assembly.GetType($"DdsSim.{typeName}", throwOnError: false, ignoreCase: false);
+    private static bool SubjectMatchesPattern(string pattern, string subject)
+    {
+        if (string.Equals(pattern, subject, StringComparison.Ordinal))
+            return true;
+
+        var patternTokens = pattern.Split('.', StringSplitOptions.None);
+        var subjectTokens = subject.Split('.', StringSplitOptions.None);
+        var patternIndex = 0;
+        var subjectIndex = 0;
+
+        while (patternIndex < patternTokens.Length && subjectIndex < subjectTokens.Length)
+        {
+            var token = patternTokens[patternIndex];
+            if (token == ">")
+                return true;
+
+            if (token != "*" && !string.Equals(token, subjectTokens[subjectIndex], StringComparison.Ordinal))
+                return false;
+
+            patternIndex++;
+            subjectIndex++;
+        }
+
+        if (patternIndex == patternTokens.Length && subjectIndex == subjectTokens.Length)
+            return true;
+
+        return patternIndex == patternTokens.Length - 1 && patternTokens[patternIndex] == ">";
+    }
+
+    private Type? ResolveBridgeMessageType(string typeName)
+        => _bridgeSchemaAssembly?
+            .GetTypes()
+            .FirstOrDefault(type => typeof(IMessage).IsAssignableFrom(type)
+                && string.Equals(type.Name, typeName, StringComparison.Ordinal));
 
     private void OnPublishRawModeChanged(bool raw)
     {

@@ -1,11 +1,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-COPY NuGet.Config ./NuGet.Config
+COPY nuget.config ./nuget.config
 COPY packages/ ./packages/
 COPY rti/ ./rti/
 COPY ASAP.csproj ./
-RUN dotnet restore ASAP.csproj --configfile NuGet.Config
+RUN dotnet restore ASAP.csproj --configfile nuget.config
 
 COPY . .
 RUN dotnet publish ASAP.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false

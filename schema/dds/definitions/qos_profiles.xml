@@ -1,0 +1,40 @@
+<qos_library name="AmbassadorProfiles">
+
+  <!-- ReliableRealtime
+       writer: RELIABLE KEEP_LAST(1) (fire-and-forget, 메모리 무한 축적 없음)
+       reader: RELIABLE KEEP_ALL  (DDS→gRPC 경로 무손실) -->
+  <qos_profile name="ReliableRealtime">
+    <datawriter_qos>
+      <reliability>
+        <kind>RELIABLE_RELIABILITY_QOS</kind>
+      </reliability>
+      <history>
+        <kind>KEEP_LAST_HISTORY_QOS</kind>
+        <depth>1</depth>
+      </history>
+      <liveliness>
+        <kind>AUTOMATIC_LIVELINESS_QOS</kind>
+        <lease_duration>
+          <sec>1</sec>
+          <nanosec>0</nanosec>
+        </lease_duration>
+      </liveliness>
+    </datawriter_qos>
+    <datareader_qos>
+      <reliability>
+        <kind>RELIABLE_RELIABILITY_QOS</kind>
+      </reliability>
+      <history>
+        <kind>KEEP_ALL_HISTORY_QOS</kind>
+      </history>
+      <liveliness>
+        <kind>AUTOMATIC_LIVELINESS_QOS</kind>
+        <lease_duration>
+          <sec>1</sec>
+          <nanosec>0</nanosec>
+        </lease_duration>
+      </liveliness>
+    </datareader_qos>
+  </qos_profile>
+
+</qos_library>

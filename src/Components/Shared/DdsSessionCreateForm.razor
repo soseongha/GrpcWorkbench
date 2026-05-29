@@ -156,13 +156,6 @@
             return (xml, Path.GetFileName(filePath));
             }
 
-            filePath = ResolveSiblingRepoPath("definitions", "DDSSim.xml");
-                if (File.Exists(filePath))
-                {
-                        var xml = await File.ReadAllTextAsync(filePath);
-                return (xml, Path.GetFileName(filePath));
-                }
-
                 const string fallback = @"<?xml version=""1.0"" encoding=""UTF-8""?>
 <dds>
     <types>
@@ -193,13 +186,6 @@
                 return (xml, Path.GetFileName(filePath));
                 }
 
-            filePath = ResolveSiblingRepoPath("config", "dds-config.xml");
-            if (File.Exists(filePath))
-            {
-                var xml = await File.ReadAllTextAsync(filePath);
-            return (xml, Path.GetFileName(filePath));
-            }
-
                 const string fallback = @"<?xml version=""1.0"" encoding=""UTF-8""?>
 <dds-ambassador-config>
     <dds>
@@ -226,14 +212,9 @@
         return localSamplePath;
     }
 
-    private string ResolveSiblingRepoPath(string folder, string fileName)
-    {
-        return Path.GetFullPath(Path.Combine(WebHostEnv.ContentRootPath, "..", "ddsAmbassador", folder, fileName));
-    }
-
     private async Task<(string Xml, string FileName)?> TryBuildSampleConfigXmlAsync()
     {
-        var sampleRoot = Path.Combine(WebHostEnv.ContentRootPath, "samples", "dds");
+        var sampleRoot = Path.Combine(WebHostEnv.ContentRootPath, "schema", "dds", "definitions");
         var qosPath = Path.Combine(sampleRoot, "qos_profiles.xml");
         var topicsPath = Path.Combine(sampleRoot, "topics.xml");
 

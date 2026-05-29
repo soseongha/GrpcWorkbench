@@ -1,0 +1,422 @@
+syntax = "proto3";
+option csharp_namespace = "DdsSim";
+package ddssim;
+// ── ENUM module ──────────────────────────────────────────────
+enum ForceIdentifier {
+  FORCE_IDENTIFIER_OTHER = 0;
+  FORCE_IDENTIFIER_FRIEND = 1;
+  FORCE_IDENTIFIER_HOSTILE = 2;
+  FORCE_IDENTIFIER_NEUTRAL = 3;
+  FORCE_IDENTIFIER_SURE_FRIEND = 4;
+  FORCE_IDENTIFIER_UNKNOWN = 5;
+  FORCE_IDENTIFIER_SUSPECT = 6;
+  FORCE_IDENTIFIER_EX_FRIEND = 7;
+  FORCE_IDENTIFIER_FAKER = 8;
+  FORCE_IDENTIFIER_EX_NEUTRAL = 9;
+  FORCE_IDENTIFIER_EX_SURE_FRIEND = 10;
+  FORCE_IDENTIFIER_EX_UNKNOWN = 11;
+  FORCE_IDENTIFIER_JOKER = 12;
+}
+
+enum JammingType {
+  JAMMING_TYPE_NO_JAMMING = 0;
+  JAMMING_TYPE_ANJ = 1;
+  JAMMING_TYPE_RGPO = 2;
+  JAMMING_TYPE_VGPO = 3;
+}
+
+enum ATSStatus {
+  ATS_STATUS_NA = 0;
+  ATS_STATUS_TURNING = 1;
+  ATS_STATUS_EVASIVE = 2;
+  ATS_STATUS_INTERCEPT = 3;
+  ATS_STATUS_TBM_START = 11;
+  ATS_STATUS_TBM_SEPARATION = 12;
+  ATS_STATUS_TBM_DEBRIS = 13;
+  ATS_STATUS_END_OF_FLIGHT = 21;
+}
+
+enum MunitionStatus {
+  MUNITION_STATUS_NA = 0;
+  MUNITION_STATUS_LAUNCH = 1;
+  MUNITION_STATUS_SEPARATION = 2;
+  MUNITION_STATUS_INTERCEPT_SUCCESS = 4;
+  MUNITION_STATUS_SELF_DESTRUCTION = 5;
+  MUNITION_STATUS_EMERGENCY_DESTRUCTION = 6;
+  MUNITION_STATUS_TERRAIN_IMPACT = 7;
+}
+
+enum MunitionType {
+  MUNITION_TYPE_NA = 0;
+  MUNITION_TYPE_AAM = 1;
+  MUNITION_TYPE_ABM = 2;
+  MUNITION_TYPE_BOOSTER = 3;
+  MUNITION_TYPE_SHROUD = 4;
+  MUNITION_TYPE_HABM = 5;
+}
+
+enum ThreatType {
+  THREAT_TYPE_AIR = 0;
+  THREAT_TYPE_TBM = 1;
+}
+
+enum SeekerPhase {
+  SEEKER_PHASE_NS = 0;
+  SEEKER_PHASE_SEEKER_ON = 1;
+  SEEKER_PHASE_LOCK_ON_TARGET = 2;
+}
+
+enum NetworkID {
+  NETWORK_ID_DDS = 0;
+  NETWORK_ID_RTI = 1;
+  NETWORK_ID_LTE = 2;
+  NETWORK_ID_LINK16 = 3;
+  NETWORK_ID_MDIL = 4;
+  NETWORK_ID_REG = 5;
+  NETWORK_ID_LCHR = 6;
+  NETWORK_ID_EMS = 7;
+  NETWORK_ID_SIU = 8;
+  NETWORK_ID_CIGP = 9;
+}
+
+enum MessageID {
+  MESSAGE_ID_UNSPECIFIED = 0;
+  MESSAGE_ID_AIR_THREAT_INFORMATION = 1;
+  MESSAGE_ID_MUNITION_INFORMATION = 2;
+  MESSAGE_ID_UPLINK_INFORMATION = 3;
+  MESSAGE_ID_DOWNLINK_INFORMATION = 4;
+  MESSAGE_ID_TIME_TICK_INFORMATION = 5;
+  MESSAGE_ID_GROUND_VEHICLE_INFORMATION = 6;
+  MESSAGE_ID_SIMULATOR_STATUS = 7;
+  MESSAGE_ID_SET_LOG = 8;
+  MESSAGE_ID_SET_CONFIGURATION = 9;
+  MESSAGE_ID_SET_SCENARIO = 10;
+  MESSAGE_ID_SET_SIMULATION = 11;
+  MESSAGE_ID_COLLISION = 12;
+  MESSAGE_ID_MUNITION_DETONATION = 13;
+  MESSAGE_ID_WEAPON_FIRE = 14;
+  MESSAGE_ID_TARGET_INFORMATION = 15;
+  MESSAGE_ID_TRACK_NUMBER_INFO = 16;
+}
+
+enum SimulatorID {
+  SIMULATOR_ID_UNSPECIFIED = 0;
+  SIMULATOR_ID_TCC = 1;
+  SIMULATOR_ID_TDS = 2;
+  SIMULATOR_ID_VGD = 3;
+  SIMULATOR_ID_DOLU = 4;
+  SIMULATOR_ID_ELU = 5;
+  SIMULATOR_ID_ATS_A = 11;
+  SIMULATOR_ID_ATS_B = 12;
+  SIMULATOR_ID_ATS_C = 13;
+  SIMULATOR_ID_ATS_D = 14;
+  SIMULATOR_ID_MSS_A = 21;
+  SIMULATOR_ID_MSS_B = 22;
+}
+
+enum SimulationStatus {
+  SIMULATION_STATUS_NA = 0;
+  SIMULATION_STATUS_ON = 1;
+  SIMULATION_STATUS_OFF = 2;
+  SIMULATION_STATUS_SCENARIO = 3;
+  SIMULATION_STATUS_START = 4;
+  SIMULATION_STATUS_STOP = 5;
+}
+
+enum CollisionStatus {
+  COLLISION_STATUS_IN_ELASTIC = 0;
+  COLLISION_STATUS_ELASTIC = 1;
+}
+
+enum DetonationType {
+  DETONATION_TYPE_NA = 0;
+  DETONATION_TYPE_ED = 29;
+  DETONATION_TYPE_SD_LOCK_ON_FAIL = 30;
+  DETONATION_TYPE_SD_TIME_OUT = 31;
+  DETONATION_TYPE_SD_DETECT_FAIL = 32;
+  DETONATION_TYPE_SD_HIT_FAIL = 33;
+}
+
+// ── STRUCT module ────────────────────────────────────────────
+message MessageHeader8 {
+  uint64 time_tick = 1;
+  uint64 time_stamp = 2;
+  MessageID msg_id = 3;
+  SimulatorID src_sim_id = 4;
+  SimulatorID dst_sim_id = 5;
+}
+
+message StandardDeviation2 {
+  uint32 x = 1;
+  uint32 y = 2;
+  uint32 z = 3;
+}
+
+message Position8 {
+  double location_x = 1;
+  double location_y = 2;
+  double location_z = 3;
+}
+
+message RelativePosition8 {
+  double distance_x = 1;
+  double distance_y = 2;
+  double distance_z = 3;
+}
+
+message LLA8 {
+  double latitude = 1;
+  double longitude = 2;
+  double altitude = 3;
+}
+
+message Velocity8 {
+  double velocity_x = 1;
+  double velocity_y = 2;
+  double velocity_z = 3;
+}
+
+message Acceleration8 {
+  double acceleration_x = 1;
+  double acceleration_y = 2;
+  double acceleration_z = 3;
+}
+
+message Orientation8 {
+  double roll = 1;
+  double pitch = 2;
+  double yaw = 3;
+}
+
+message AER8 {
+  double azimuth = 1;
+  double elevation = 2;
+  double roll = 3;
+}
+
+message ObjectInfo4 {
+  ForceIdentifier iff = 1;
+  uint32 model_kind = 2;
+  uint32 object_number = 3;
+  bool is_frozen = 4;
+}
+
+message Jamming4 {
+  JammingType type = 1;
+  uint32 jamming_power = 2;
+  uint32 jamming_pull_off = 3;
+}
+
+message LCHRStatus2 {
+  uint32 launch_ready_status = 1;
+  uint32 lcu_status = 2;
+  uint32 hot_inventory = 3;
+  uint32 cold_inventory = 4;
+  uint32 lss_number = 5;
+  uint32 connection_status = 6;
+}
+
+message MFRStatus8 {
+  double beam_azimuth = 1;
+  double beam_azimuth_offset = 2;
+  double beam_elevation = 3;
+  double beam_elevation_offset = 4;
+  double beam_horizontal_area = 5;
+  double beam_vertical_area = 6;
+  uint32 beam_range = 7;
+  uint32 beam_on_off_state = 8;
+}
+
+message Config8 {
+  string config_name = 1;
+  string config_version = 2;
+  SimulatorID sim_id = 3;
+}
+
+message AirThreat8 {
+  Position8 position = 1;
+  Velocity8 velocity = 2;
+  Acceleration8 acceleration = 3;
+  Orientation8 orientation = 4;
+  ObjectInfo4 information = 5;
+  Jamming4 jamming_status = 6;
+  ATSStatus status = 7;
+  uint32 mean_rcs = 8;
+}
+
+message Munition8 {
+  Position8 position = 1;
+  Velocity8 velocity = 2;
+  Acceleration8 acceleration = 3;
+  Orientation8 orientation = 4;
+  ObjectInfo4 information = 5;
+  MunitionStatus status = 6;
+  SeekerPhase seeker_status = 7;
+  MunitionType missile_type = 8;
+  uint32 lock_on_threat_object_number = 9;
+  uint32 mean_rcs = 10;
+  uint32 signal_power = 11;
+  uint32 address_key = 12;
+}
+
+message GroundVehicle8 {
+  Position8 position = 1;
+  Velocity8 velocity = 2;
+  Acceleration8 acceleration = 3;
+  Orientation8 orientation = 4;
+  MFRStatus8 mfr_status = 5;
+  ObjectInfo4 information = 6;
+  LCHRStatus2 launcher_status = 7;
+}
+
+message Uplink2 {
+  uint32 address_key = 1;
+  uint32 missile_type = 2;
+  repeated uint32 data = 3;
+}
+
+message Downlink2 {
+  uint32 address_key = 1;
+  uint32 crc = 2;
+  repeated uint32 data = 3;
+}
+
+message TimeTick8 {
+  uint64 time_tick = 1;
+  uint32 sync_cycle = 2;
+}
+
+// ── MSG module ───────────────────────────────────────────────
+message AirThreatInformation {
+  MessageHeader8 header = 1;
+  uint32 air_count = 2;
+  repeated AirThreat8 air_objects = 3;
+}
+
+message MunitionInformation {
+  MessageHeader8 header = 1;
+  uint32 munition_count = 2;
+  repeated Munition8 munition_objects = 3;
+}
+
+message GroundVehicleInformation {
+  MessageHeader8 header = 1;
+  uint32 ground_vehicle_count = 2;
+  repeated GroundVehicle8 ground_vehicle_objects = 3;
+}
+
+message UplinkInformation {
+  MessageHeader8 header = 1;
+  uint32 uplink_count = 2;
+  repeated Uplink2 uplink_messages = 3;
+}
+
+message DownlinkInformation {
+  MessageHeader8 header = 1;
+  uint32 downlink_count = 2;
+  repeated Downlink2 downlink_message = 3;
+}
+
+message TimeTickInformation {
+  MessageHeader8 header = 1;
+  TimeTick8 time_tick_message = 2;
+}
+
+message SimulatorStatus {
+  MessageHeader8 header = 1;
+}
+
+message WeaponFire {
+  MessageHeader8 header = 1;
+  Position8 mfr_position = 2;
+  AER8 mfr_antenna_aer = 3;
+  MunitionType munition_type = 4;
+  uint32 munition_object_number = 5;
+  uint32 munition_address_key = 6;
+  uint32 ed_code = 7;
+  uint32 ip_ground_type = 8;
+  uint32 is_forced_fire = 9;
+  repeated uint32 encoding_key_table = 10;
+  uint32 lss_number = 11;
+  bool encoding_key_flag = 12;
+}
+
+message TargetInformation {
+  MessageHeader8 header = 1;
+  Position8 target_position = 2;
+  Velocity8 target_velocity = 3;
+  Position8 ip_position = 4;
+  Velocity8 ip_velocity = 5;
+  ThreatType target_type = 6;
+  StandardDeviation2 target_position_std = 7;
+  StandardDeviation2 target_velocity_std = 8;
+  uint32 munition_object_number = 9;
+  uint32 delay_time = 10;
+  uint32 lss_number = 11;
+}
+
+message TrackNumberInfo {
+  MessageHeader8 header = 1;
+  uint32 object_number = 2;
+  uint32 rdr_track_number = 3;
+  uint32 ecs_track_number = 4;
+  uint32 link16_track_number = 5;
+  uint32 mdil_track_number = 6;
+}
+
+message SetLog {
+  MessageHeader8 header = 1;
+  repeated NetworkID log_save_network_list = 2;
+}
+
+message SetConfiguration {
+  MessageHeader8 header = 1;
+  repeated Config8 config = 2;
+}
+
+message SetScenario {
+  MessageHeader8 header = 1;
+  string scenario_name = 2;
+  string scenario_version = 3;
+}
+
+message SetSimulation {
+  MessageHeader8 header = 1;
+  SimulationStatus set_sim = 2;
+}
+
+message Collision {
+  MessageHeader8 header = 1;
+  RelativePosition8 relative_position = 2;
+  CollisionStatus collision_type = 3;
+}
+
+message MunitionDetonation {
+  MessageHeader8 header = 1;
+  Position8 detonation_position = 2;
+  Velocity8 final_velocity = 3;
+  RelativePosition8 relative_position = 4;
+  DetonationType detonation_result = 5;
+  uint32 munition_object_number = 6;
+  uint32 threat_object_number = 7;
+}
+
+// ── Typed gRPC Bridge contract ───────────────────────────────
+service DdsBridge {
+  rpc StreamAirThreatInformation (stream AirThreatInformation) returns (stream AirThreatInformation);
+  rpc StreamMunitionInformation (stream MunitionInformation) returns (stream MunitionInformation);
+  rpc StreamGroundVehicleInformation (stream GroundVehicleInformation) returns (stream GroundVehicleInformation);
+  rpc StreamUplinkInformation (stream UplinkInformation) returns (stream UplinkInformation);
+  rpc StreamDownlinkInformation (stream DownlinkInformation) returns (stream DownlinkInformation);
+  rpc StreamTimeTickInformation (stream TimeTickInformation) returns (stream TimeTickInformation);
+  rpc StreamSimulatorStatus (stream SimulatorStatus) returns (stream SimulatorStatus);
+  rpc StreamWeaponFire (stream WeaponFire) returns (stream WeaponFire);
+  rpc StreamTargetInformation (stream TargetInformation) returns (stream TargetInformation);
+  rpc StreamTrackNumberInfo (stream TrackNumberInfo) returns (stream TrackNumberInfo);
+  rpc StreamSetLog (stream SetLog) returns (stream SetLog);
+  rpc StreamSetConfiguration (stream SetConfiguration) returns (stream SetConfiguration);
+  rpc StreamSetScenario (stream SetScenario) returns (stream SetScenario);
+  rpc StreamSetSimulation (stream SetSimulation) returns (stream SetSimulation);
+  rpc StreamCollision (stream Collision) returns (stream Collision);
+  rpc StreamMunitionDetonation (stream MunitionDetonation) returns (stream MunitionDetonation);
+}

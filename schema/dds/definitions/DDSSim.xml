@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="file:///C:/Program Files/rti_connext_dds-7.3.1/bin/../resource/app/app_support/rtiddsgen/schema/rti_dds_profiles.xsd">
+<types>
+<module name="ENUM">
+  <enum name="ForceIdentifier">
+    <enumerator name="Other" value="0"/>
+    <enumerator name="Friend" value="1"/>
+    <enumerator name="Hostile" value="2"/>
+    <enumerator name="Neutral" value="3"/>
+    <enumerator name="SureFriend" value="4"/>
+    <enumerator name="Unknown" value="5"/>
+    <enumerator name="Suspect" value="6"/>
+    <enumerator name="ExFriend" value="7"/>
+    <enumerator name="Faker" value="8"/>
+    <enumerator name="ExNeutral" value="9"/>
+    <enumerator name="ExSureFriend" value="10"/>
+    <enumerator name="ExUnknown" value="11"/>
+    <enumerator name="Joker" value="12"/>
+  </enum> 
+  <enum name="JammingType">
+    <enumerator name="NoJamming" value="0"/>
+    <enumerator name="ANJ" value="1"/>
+    <enumerator name="RGPO" value="2"/>
+    <enumerator name="VGPO" value="3"/>
+  </enum> 
+  <enum name="ATSStatus">
+    <enumerator name="NA" value="0"/>
+    <enumerator name="Turning" value="1"/>
+    <enumerator name="Evasive" value="2"/>
+    <enumerator name="Intercept" value="3"/>
+    <enumerator name="TBMStart" value="11"/>
+    <enumerator name="TBMSeparation" value="12"/>
+    <enumerator name="TBMDebris" value="13"/>
+    <enumerator name="EndOfFlight" value="21"/>
+  </enum> 
+  <enum name="MunitionStatus">
+    <enumerator name="NA" value="0"/>
+    <enumerator name="Launch" value="1"/>
+    <enumerator name="Separation" value="2"/>
+    <enumerator name="InterceptSuccess" value="4"/>
+    <enumerator name="SelfDestruction" value="5"/>
+    <enumerator name="EmergencyDestruction" value="6"/>
+    <enumerator name="TerrainImpact" value="7"/>
+  </enum> 
+  <enum name="MunitionType">
+    <enumerator name="NA" value="0"/>
+    <enumerator name="AAM" value="1"/>
+    <enumerator name="ABM" value="2"/>
+    <enumerator name="Booster" value="3"/>
+    <enumerator name="Shroud" value="4"/>
+    <enumerator name="HABM" value="5"/>
+  </enum> 
+  <enum name="ThreatType">
+    <enumerator name="Air" value="0"/>
+    <enumerator name="TBM" value="1"/>
+  </enum> 
+  <enum name="SeekerPhase">
+    <enumerator name="NS" value="0"/>
+    <enumerator name="SeekerOn" value="1"/>
+    <enumerator name="LockOnTarget" value="2"/>
+  </enum> 
+  <enum name="NetworkID">
+    <enumerator name="DDS" value="0"/>
+    <enumerator name="RTI" value="1"/>
+    <enumerator name="LTE" value="2"/>
+    <enumerator name="Link16" value="3"/>
+    <enumerator name="MDIL" value="4"/>
+    <enumerator name="REG" value="5"/>
+    <enumerator name="LCHR" value="6"/>
+    <enumerator name="EMS" value="7"/>
+    <enumerator name="SIU" value="8"/>
+    <enumerator name="CIGP" value="9"/>
+  </enum> 
+  <enum name="MessageID">
+    <enumerator name="AirThreatInformation" value="1"/>
+    <enumerator name="MunitionInformation" value="2"/>
+    <enumerator name="UplinkInformation" value="3"/>
+    <enumerator name="DownlinkInformation" value="4"/>
+    <enumerator name="TimeTickInformation" value="5"/>
+    <enumerator name="GroundVehicleInformation" value="6"/>
+    <enumerator name="SimulatorStatus" value="7"/>
+    <enumerator name="SetLog" value="8"/>
+    <enumerator name="SetConfiguration" value="9"/>
+    <enumerator name="SetScenario" value="10"/>
+    <enumerator name="SetSimulation" value="11"/>
+    <enumerator name="Collision" value="12"/>
+    <enumerator name="MunitionDetonation" value="13"/>
+    <enumerator name="WeaponFire" value="14"/>
+    <enumerator name="TargetInformation" value="15"/>
+    <enumerator name="TrackNumberInfo" value="16"/>
+  </enum> 
+  <enum name="SimulatorID">
+    <enumerator name="TCC" value="1"/>
+    <enumerator name="TDS" value="2"/>
+    <enumerator name="VGD" value="3"/>
+    <enumerator name="DOLU" value="4"/>
+    <enumerator name="ELU" value="5"/>
+    <enumerator name="ATS_A" value="11"/>
+    <enumerator name="ATS_B" value="12"/>
+    <enumerator name="ATS_C" value="13"/>
+    <enumerator name="ATS_D" value="14"/>
+    <enumerator name="MSS_A" value="21"/>
+    <enumerator name="MSS_B" value="22"/>
+  </enum> 
+  <enum name="SimulationStatus">
+    <enumerator name="NA" value="0"/>
+    <enumerator name="On" value="1"/>
+    <enumerator name="Off" value="2"/>
+    <enumerator name="Scenario" value="3"/>
+    <enumerator name="Start" value="4"/>
+    <enumerator name="Stop" value="5"/>
+  </enum> 
+  <enum name="CollisionStatus">
+    <enumerator name="InElastic" value="0"/>
+    <enumerator name="Elastic" value="1"/>
+  </enum> 
+  <enum name="DetonationType">
+    <enumerator name="NA" value="0"/>
+    <enumerator name="ED" value="29"/>
+    <enumerator name="SDLockOnFail" value="30"/>
+    <enumerator name="SDTimeOut" value="31"/>
+    <enumerator name="SDDetectFail" value="32"/>
+    <enumerator name="SDHitFail" value="33"/>
+  </enum> 
+</module>
+<module name="STRUCT">
+  <struct name= "MessageHeader8">
+    <member name="TimeTick" type="uint64"/>
+    <member name="TimeStamp" type="uint64"/>
+    <member name="MsgID" type="nonBasic"  nonBasicTypeName= "ENUM::MessageID"/>
+    <member name="SrcSimID" type="nonBasic"  nonBasicTypeName= "ENUM::SimulatorID"/>
+    <member name="DstSimID" type="nonBasic"  nonBasicTypeName= "ENUM::SimulatorID"/>
+  </struct>
+  <struct name= "StandardDeviation2">
+    <member name="X" type="uint16"/>
+    <member name="Y" type="uint16"/>
+    <member name="Z" type="uint16"/>
+  </struct>
+  <struct name= "Position8">
+    <member name="LocationX" type="float64"/>
+    <member name="LocationY" type="float64"/>
+    <member name="LocationZ" type="float64"/>
+  </struct>
+  <struct name= "RelativePosition8">
+    <member name="DistanceX" type="float64"/>
+    <member name="DistanceY" type="float64"/>
+    <member name="DistanceZ" type="float64"/>
+  </struct>
+  <struct name= "LLA8">
+    <member name="Latitude" type="float64"/>
+    <member name="Longitude" type="float64"/>
+    <member name="Altitude" type="float64"/>
+  </struct>
+  <struct name= "Velocity8">
+    <member name="VelocityX" type="float64"/>
+    <member name="VelocityY" type="float64"/>
+    <member name="VelocityZ" type="float64"/>
+  </struct>
+  <struct name= "Acceleration8">
+    <member name="AccelerationX" type="float64"/>
+    <member name="AccelerationY" type="float64"/>
+    <member name="AccelerationZ" type="float64"/>
+  </struct>
+  <struct name= "Orientation8">
+    <member name="Roll" type="float64"/>
+    <member name="Pitch" type="float64"/>
+    <member name="Yaw" type="float64"/>
+  </struct>
+  <struct name= "AER8">
+    <member name="Azimuth" type="float64"/>
+    <member name="Elevation" type="float64"/>
+    <member name="Roll" type="float64"/>
+  </struct>
+  <struct name= "ObjectInfo4">
+    <member name="IFF" type="nonBasic"  nonBasicTypeName= "ENUM::ForceIdentifier"/>
+    <member name="ModelKind" type="uint16"/>
+    <member name="ObjectNumber" type="uint16"/>
+    <member name="IsFrozen" type="boolean"/>
+  </struct>
+  <struct name= "Jamming4">
+    <member name="Type" type="nonBasic"  nonBasicTypeName= "ENUM::JammingType"/>
+    <member name="JammingPower" type="uint16"/>
+    <member name="JammingPullOff" type="uint16"/>
+  </struct>
+  <struct name= "LCHRStatus2">
+    <member name="LaunchReadyStatus" type="uint16"/>
+    <member name="LCUStatus" type="uint16"/>
+    <member name="HotInventory" type="uint16"/>
+    <member name="ColdInventory" type="uint16"/>
+    <member name="LSSNumber" type="byte"/>
+    <member name="ConnectionStatus" type="byte"/>
+  </struct>
+  <struct name= "MFRStatus8">
+    <member name="BeamAzimuth" type="float64"/>
+    <member name="BeamAzimuthOffset" type="float64"/>
+    <member name="BeamElevation" type="float64"/>
+    <member name="BeamElevationOffset" type="float64"/>
+    <member name="BeamHorizontalArea" type="float64"/>
+    <member name="BeamVerticalArea" type="float64"/>
+    <member name="BeamRange" type="uint32"/>
+    <member name="BeamOnOffState" type="byte"/>
+  </struct>
+  <struct name= "Config8">
+    <member name="ConfigName" stringMaxLength="255" type="string"/>
+    <member name="ConfigVersion" stringMaxLength="255" type="string"/>
+    <member name="SimID" type="nonBasic"  nonBasicTypeName= "ENUM::SimulatorID"/>
+  </struct>
+  <struct name= "AirThreat8">
+    <member name="Position" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="Velocity" type="nonBasic"  nonBasicTypeName= "STRUCT::Velocity8"/>
+    <member name="Acceleration" type="nonBasic"  nonBasicTypeName= "STRUCT::Acceleration8"/>
+    <member name="Orientation" type="nonBasic"  nonBasicTypeName= "STRUCT::Orientation8"/>
+    <member name="Information" type="nonBasic"  nonBasicTypeName= "STRUCT::ObjectInfo4"/>
+    <member name="JammingStatus" type="nonBasic"  nonBasicTypeName= "STRUCT::Jamming4"/>
+    <member name="Status" type="nonBasic"  nonBasicTypeName= "ENUM::ATSStatus"/>
+    <member name="MeanRCS" type="uint16"/>
+  </struct>
+  <struct name= "Munition8">
+    <member name="Position" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="Velocity" type="nonBasic"  nonBasicTypeName= "STRUCT::Velocity8"/>
+    <member name="Acceleration" type="nonBasic"  nonBasicTypeName= "STRUCT::Acceleration8"/>
+    <member name="Orientation" type="nonBasic"  nonBasicTypeName= "STRUCT::Orientation8"/>
+    <member name="Information" type="nonBasic"  nonBasicTypeName= "STRUCT::ObjectInfo4"/>
+    <member name="Status" type="nonBasic"  nonBasicTypeName= "ENUM::MunitionStatus"/>
+    <member name="SeekerStatus" type="nonBasic"  nonBasicTypeName= "ENUM::SeekerPhase"/>
+    <member name="MissileType" type="nonBasic"  nonBasicTypeName= "ENUM::MunitionType"/>
+    <member name="LockOnThreatObjectNumber" type="uint16"/>
+    <member name="MeanRCS" type="uint16"/>
+    <member name="SignalPower" type="uint16"/>
+    <member name="AddressKey" type="uint16"/>
+  </struct>
+  <struct name= "GroundVehicle8">
+    <member name="Position" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="Velocity" type="nonBasic"  nonBasicTypeName= "STRUCT::Velocity8"/>
+    <member name="Acceleration" type="nonBasic"  nonBasicTypeName= "STRUCT::Acceleration8"/>
+    <member name="Orientation" type="nonBasic"  nonBasicTypeName= "STRUCT::Orientation8"/>
+    <member name="MFRStatus" type="nonBasic"  nonBasicTypeName= "STRUCT::MFRStatus8"/>
+    <member name="Information" type="nonBasic"  nonBasicTypeName= "STRUCT::ObjectInfo4"/>
+    <member name="LauncherStatus" type="nonBasic"  nonBasicTypeName= "STRUCT::LCHRStatus2"/>
+  </struct>
+  <struct name= "Uplink2">
+    <member name="AddressKey" type="uint16"/>
+    <member name="MissileType" type="uint16"/>
+    <member name="Data" type="uint16" arrayDimensions="26"/>
+  </struct>
+  <struct name= "Downlink2">
+    <member name="AddressKey" type="uint16"/>
+    <member name="CRC" type="uint16"/>
+    <member name="Data" type="uint16" arrayDimensions="24"/>
+  </struct>
+  <struct name= "TimeTick8">
+    <member name="TimeTick" type="uint64"/>
+    <member name="SyncCycle" type="uint32"/>
+  </struct>
+</module>
+<module name="MSG">
+  <struct name= "AirThreatInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="AirCount" type="uint16"/>
+    <member name="AirObjects" sequenceMaxLength="900" type="nonBasic"  nonBasicTypeName= "STRUCT::AirThreat8"/>
+  </struct>
+  <struct name= "MunitionInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="MunitionCount" type="uint16"/>
+    <member name="MunitionObjects" sequenceMaxLength="900" type="nonBasic"  nonBasicTypeName= "STRUCT::Munition8"/>
+  </struct>
+  <struct name= "GroundVehicleInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="GroundVehicleCount" type="uint16"/>
+    <member name="GroundVehicleObjects" sequenceMaxLength="100" type="nonBasic"  nonBasicTypeName= "STRUCT::GroundVehicle8"/>
+  </struct>
+  <struct name= "UplinkInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="UplinkCount" type="uint16"/>
+    <member name="UplinkMessages" sequenceMaxLength="56" type="nonBasic"  nonBasicTypeName= "STRUCT::Uplink2"/>
+  </struct>
+  <struct name= "DownlinkInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="DownlinkCount" type="uint16"/>
+    <member name="DownlinkMessage" sequenceMaxLength="56" type="nonBasic"  nonBasicTypeName= "STRUCT::Downlink2"/>
+  </struct>
+  <struct name= "TimeTickInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="TimeTickMessage" type="nonBasic"  nonBasicTypeName= "STRUCT::TimeTick8"/>
+  </struct>
+  <struct name= "SimulatorStatus">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+  </struct>
+  <struct name= "WeaponFire">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="MFRPosition" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="MFRAntennaAER" type="nonBasic"  nonBasicTypeName= "STRUCT::AER8"/>
+    <member name="MunitionType" type="nonBasic"  nonBasicTypeName= "ENUM::MunitionType"/>
+    <member name="MunitionObjectNumber" type="uint16"/>
+    <member name="MunitionAddressKey" type="uint16"/>
+    <member name="EDCode" type="uint16"/>
+    <member name="IPGroundType" type="uint16"/>
+    <member name="IsForcedFire" type="uint16"/>
+    <member name="EncodingKeyTable" type="uint16" arrayDimensions="55"/>
+    <member name="LSSNumber" type="byte"/>
+    <member name="EncodingKeyFlag" type="boolean"/>
+  </struct>
+  <struct name= "TargetInformation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="TargetPosition" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="TargetVelocity" type="nonBasic"  nonBasicTypeName= "STRUCT::Velocity8"/>
+    <member name="IPPosition" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="IPVelocity" type="nonBasic"  nonBasicTypeName= "STRUCT::Velocity8"/>
+    <member name="TargetType" type="nonBasic"  nonBasicTypeName= "ENUM::ThreatType"/>
+    <member name="TargetPositionSTD" type="nonBasic"  nonBasicTypeName= "STRUCT::StandardDeviation2"/>
+    <member name="TargetVelocitySTD" type="nonBasic"  nonBasicTypeName= "STRUCT::StandardDeviation2"/>
+    <member name="MunitionObjectNumber" type="uint16"/>
+    <member name="DelayTime" type="uint16"/>
+    <member name="LSSNumber" type="byte"/>
+  </struct>
+  <struct name= "TrackNumberInfo">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="ObjectNumber" type="uint16"/>
+    <member name="RDRTrackNumber" type="uint16"/>
+    <member name="ECSTrackNumber" type="uint16"/>
+    <member name="Link16TrackNumber" type="uint16"/>
+    <member name="MDILTrackNumber" type="uint16"/>
+  </struct>
+  <struct name= "SetLog">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="LogSaveNetworkList" sequenceMaxLength="20" type="nonBasic"  nonBasicTypeName= "ENUM::NetworkID"/>
+  </struct>
+  <struct name= "SetConfiguration">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="Config" sequenceMaxLength="50" type="nonBasic"  nonBasicTypeName= "STRUCT::Config8"/>
+  </struct>
+  <struct name= "SetScenario">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="ScenarioName" stringMaxLength="255" type="string"/>
+    <member name="ScenarioVersion" stringMaxLength="255" type="string"/>
+  </struct>
+  <struct name= "SetSimulation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="SetSim" type="nonBasic"  nonBasicTypeName= "ENUM::SimulationStatus"/>
+  </struct>
+  <struct name= "Collision">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="RelativePosition" type="nonBasic"  nonBasicTypeName= "STRUCT::RelativePosition8"/>
+    <member name="CollisionType" type="nonBasic"  nonBasicTypeName= "ENUM::CollisionStatus"/>
+  </struct>
+  <struct name= "MunitionDetonation">
+    <member name="Header" type="nonBasic"  nonBasicTypeName= "STRUCT::MessageHeader8"/>
+    <member name="DetonationPosition" type="nonBasic"  nonBasicTypeName= "STRUCT::Position8"/>
+    <member name="FinalVelocity" type="nonBasic"  nonBasicTypeName= "STRUCT::Velocity8"/>
+    <member name="RelativePosition" type="nonBasic"  nonBasicTypeName= "STRUCT::RelativePosition8"/>
+    <member name="DetonationResult" type="nonBasic"  nonBasicTypeName= "ENUM::DetonationType"/>
+    <member name="MunitionObjectNumber" type="uint16"/>
+    <member name="ThreatObjectNumber" type="uint16"/>
+  </struct>
+</module>
+</types>
+
+</dds>

@@ -14,7 +14,10 @@
     <PackageReference Include="Grpc.AspNetCore" Version="2.64.0" />
     <PackageReference Include="Grpc.Net.Client" Version="2.64.0" />
     <PackageReference Include="Google.Protobuf" Version="3.31.1" />
-    <PackageReference Include="Grpc.Tools" Version="2.64.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.78.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
     <PackageReference Include="MudBlazor" Version="7.15.0" />
@@ -29,8 +32,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- DdsSim message classes — GrpcServices="None" so only message types are generated, no stubs -->
-    <Protobuf Include="DDSSim.proto" GrpcServices="None" />
+    <Content Include="schema\proto\**\*.proto">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="schema\dds\definitions\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -39,5 +48,14 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="ValidateSchemaArtifacts" BeforeTargets="CoreCompile">
+      <Error Condition="!Exists('schema\dds\definitions\DDSSim.xml')"
+        Text="schema/dds/definitions/DDSSim.xml 가 없습니다. ASAP의 DDS 테스트용 XML 정의를 직접 배치하세요." />
+    <Error Condition="!Exists('schema\proto\grpc\DDSSim.proto')"
+      Text="schema/proto/grpc/DDSSim.proto 가 없습니다. ASAP gRPC 테스트용 proto를 직접 배치하세요." />
+    <Error Condition="!Exists('schema\proto\nats\DDSSim.proto')"
+      Text="schema/proto/nats/DDSSim.proto 가 없습니다. ASAP NATS 테스트용 proto를 직접 배치하세요." />
+  </Target>
 
 </Project>

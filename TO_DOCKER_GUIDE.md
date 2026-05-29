@@ -114,7 +114,7 @@ UI: <http://localhost:5226>
 1. DDS 쪽은 같은 domain, topic/type 정의, 그리고 호환 가능한 QoS를 사용해야 합니다.
 2. NATS 쪽은 `dds.sidecar.to-dds.<TopicName>` 또는 `dds.sidecar.to-nats.<TopicName>` 규약을 따라야 합니다.
 3. `to-dds` 방향 payload는 JSON이 아니라 해당 protobuf message의 raw binary 여야 합니다.
-4. sidecar 컨테이너 안에 `/app/definitions` 와 RTI license 가 있어야 합니다.
+4. sidecar 컨테이너 안에 `/app/schema/dds/definitions` 와 RTI license 가 있어야 합니다.
 5. 실제 컨테이너 네트워크에서 DDS discovery 와 data traffic 이 통과해야 합니다.
 
 즉, sidecar 는 다른 대상에도 붙을 수 있지만, 현재 보장되는 건 "같은 정의와 네트워크 조건을 맞춘 대상"까지입니다.

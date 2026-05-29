@@ -1448,20 +1448,20 @@
             var protoBytes = await ReadDefaultProtoBytesAsync();
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
             State.SetServices(services);
-            _loadedProtoFileName = "DDSSim.proto";
+            _loadedProtoFileName = "grpc/DDSSim.proto";
             Notify.RegisterServices(services);
             _ = Task.Run(() => ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes));
-            Log($"DDSSim.proto 파싱 완료: {services.Count}개 서비스", LogLevel.Success);
+            Log($"grpc/DDSSim.proto 파싱 완료: {services.Count}개 서비스", LogLevel.Success);
         }
         catch (Exception ex)
         {
-            Log($"DDSSim.proto 파싱 실패: {ex.Message}", LogLevel.Error);
+            Log($"grpc/DDSSim.proto 파싱 실패: {ex.Message}", LogLevel.Error);
         }
     }
 
     private async Task<byte[]> ReadDefaultProtoBytesAsync()
     {
-        var path = Path.Combine(WebHostEnv.WebRootPath, "proto", "DDSSim.proto");
+        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "grpc", "DDSSim.proto");
         return await File.ReadAllBytesAsync(path);
     }
 
@@ -1999,16 +1999,16 @@
             var protoBytes = await ReadDefaultProtoBytesAsync();
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
             State.SetServices(services);
-            _loadedProtoFileName = "DDSSim.proto";
+            _loadedProtoFileName = "grpc/DDSSim.proto";
             Notify.RegisterServices(services);
-            await SessionService.UpdateSessionProtoAsync(_session!.SessionId, protoBytes, "DDSSim.proto");
+            await SessionService.UpdateSessionProtoAsync(_session!.SessionId, protoBytes, "grpc/DDSSim.proto");
             _session.Services = services;
             _ = Task.Run(() => ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes));
-            Log($"DDSSim.proto 로드: {services.Count}개 서비스 (컴파일 warm-up)", LogLevel.Success);
+            Log($"grpc/DDSSim.proto 로드: {services.Count}개 서비스 (컴파일 warm-up)", LogLevel.Success);
         }
         catch (Exception ex)
         {
-            Log($"DDSSim.proto 로드 실패: {ex.Message}", LogLevel.Error);
+            Log($"grpc/DDSSim.proto 로드 실패: {ex.Message}", LogLevel.Error);
         }
     }
 
