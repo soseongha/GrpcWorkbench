@@ -18,7 +18,7 @@ public interface IDynamicProtoCompiler
 
 public class DynamicProtoCompiler : IDynamicProtoCompiler
 {
-    private static readonly ConcurrentDictionary<string, Assembly> _cache = new();
+    private static readonly ConcurrentDictionary<string, Lazy<Task<Assembly>>> _cache = new();
     private readonly ILogger<DynamicProtoCompiler> _logger;
 
     public DynamicProtoCompiler(ILogger<DynamicProtoCompiler> logger)
@@ -35,40 +35,50 @@ public class DynamicProtoCompiler : IDynamicProtoCompiler
         if (_cache.TryGetValue(cacheKey, out var cached))
         {
             _logger.LogDebug("Proto compilation cache hit: {Key}", cacheKey[..8]);
-            return cached;
+            return await cached.Value;
         }
+
+        var lazyTask = new Lazy<Task<Assembly>>(
+            () => CompileCoreAsync(protoContent),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        var cacheEntry = _cache.GetOrAdd(cacheKey, lazyTask);
 
         try
         {
-            _logger.LogInformation("Starting dynamic Proto compilation...");
+            return await cacheEntry.Value;
+        }
+        catch (Exception ex)
+        {
+            _cache.TryRemove(cacheKey, out _);
+            _logger.LogError(ex, "Proto compilation failed");
+            throw;
+        }
+    }
 
-            // 1단계: Proto 파일을 임시 파일로 저장
-            var tempDir = Path.Combine(Path.GetTempPath(), $"grpc_{Guid.NewGuid()}");
-            Directory.CreateDirectory(tempDir);
+    private async Task<Assembly> CompileCoreAsync(byte[] protoContent)
+    {
+        _logger.LogInformation("Starting dynamic Proto compilation...");
 
+        var tempDir = Path.Combine(Path.GetTempPath(), $"grpc_{Guid.NewGuid()}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
             var protoFilePath = Path.Combine(tempDir, "service.proto");
             await File.WriteAllBytesAsync(protoFilePath, protoContent);
             _logger.LogInformation($"Proto file saved to: {protoFilePath}");
 
-            // 2단계: protoc 실행하여 C# 코드 생성
             var csharpFiles = await RunProtocAsync(tempDir, protoFilePath);
             _logger.LogInformation($"Generated {csharpFiles.Count} C# files");
 
-            // 3단계: C# 코드를 어셈블리로 컴파일 (각 파일을 독립 SyntaxTree로)
             var assembly = CompileCsharpToAssembly(csharpFiles);
             _logger.LogInformation("Successfully compiled Proto to Assembly");
-
-            // 정리
-            try { Directory.Delete(tempDir, true); }
-            catch (Exception ex) { _logger.LogWarning("Failed to cleanup temp directory: {Message}", ex.Message); }
-
-            _cache.TryAdd(cacheKey, assembly);
             return assembly;
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogError(ex, "Proto compilation failed");
-            throw;
+            try { Directory.Delete(tempDir, true); }
+            catch (Exception ex) { _logger.LogWarning("Failed to cleanup temp directory: {Message}", ex.Message); }
         }
     }
 

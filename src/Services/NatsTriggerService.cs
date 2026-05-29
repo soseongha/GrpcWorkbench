@@ -1,6 +1,10 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using ASAP.Models.Nats;
+using ASAP.Grpc;
 using ASAP.Nats;
+using Google.Protobuf;
+using Microsoft.AspNetCore.Hosting;
 
 namespace ASAP.Services;
 
@@ -8,18 +12,30 @@ public sealed class NatsTriggerService : IAsyncDisposable
 {
     private readonly INatsSessionService _natsSessions;
     private readonly ILogger<NatsTriggerService> _logger;
+    private readonly IDynamicProtoCompiler _protoCompiler;
+    private readonly IJsonMessageConverter _jsonMessageConverter;
+    private readonly IWebHostEnvironment _environment;
 
     private readonly ConcurrentDictionary<string, NatsTrigger> _triggers = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _periodicCts = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastOnIncomingFireAt = new();
     private readonly ConcurrentDictionary<string, Queue<DateTime>> _onIncomingFireWindow = new();
+    private Task<Assembly>? _bridgeSchemaAssemblyTask;
 
     public event Action? Changed;
 
-    public NatsTriggerService(INatsSessionService natsSessions, ILogger<NatsTriggerService> logger)
+    public NatsTriggerService(
+        INatsSessionService natsSessions,
+        ILogger<NatsTriggerService> logger,
+        IDynamicProtoCompiler protoCompiler,
+        IJsonMessageConverter jsonMessageConverter,
+        IWebHostEnvironment environment)
     {
         _natsSessions = natsSessions;
         _logger = logger;
+        _protoCompiler = protoCompiler;
+        _jsonMessageConverter = jsonMessageConverter;
+        _environment = environment;
         _natsSessions.MessageReceived += OnMessageReceived;
     }
 
@@ -63,7 +79,7 @@ public sealed class NatsTriggerService : IAsyncDisposable
     public async Task<(bool Success, string? Error)> FireOnceAsync(string triggerId)
     {
         if (!_triggers.TryGetValue(triggerId, out var trigger))
-            return (false, "¿⁄µø Ω««‡ «◊∏Ò¿Ã æ¯Ω¿¥œ¥Ÿ");
+            return (false, "ÔøΩ⁄µÔøΩ ÔøΩÔøΩÔøΩÔøΩ ÔøΩ◊∏ÔøΩÔøΩÔøΩ ÔøΩÔøΩÔøΩÔøΩÔøΩœ¥ÔøΩ");
 
         return await PublishAsync(trigger);
     }
@@ -184,7 +200,20 @@ public sealed class NatsTriggerService : IAsyncDisposable
     {
         try
         {
-            await _natsSessions.PublishTextAsync(trigger.SessionId, trigger.Subject, trigger.PayloadText);
+            if (trigger.UseBridgeMessage)
+            {
+                var bridgeMessageType = ResolveBridgeMessageType(trigger.BridgeMessageType);
+                if (bridgeMessageType == null)
+                    throw new InvalidOperationException($"NATS bridge Î©îÏãúÏßÄ ÌÉÄÏûÖÏùÑ Ï∞æÏùÑ Ïàò ÏóÜÏäµÎãàÎã§: {trigger.BridgeMessageType}");
+
+                var message = await _jsonMessageConverter.JsonToMessageAsync(trigger.PayloadText, bridgeMessageType);
+                await _natsSessions.PublishBinaryAsync(trigger.SessionId, trigger.Subject, message.ToByteArray(), trigger.PayloadText);
+            }
+            else
+            {
+                await _natsSessions.PublishTextAsync(trigger.SessionId, trigger.Subject, trigger.PayloadText);
+            }
+
             Interlocked.Increment(ref trigger.TotalFires);
             trigger.LastFiredAt = DateTime.UtcNow;
             trigger.LastError = null;
@@ -196,6 +225,38 @@ public sealed class NatsTriggerService : IAsyncDisposable
             trigger.LastError = ex.Message;
             return (false, ex.Message);
         }
+    }
+
+    private Type? ResolveBridgeMessageType(string? messageTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(messageTypeName))
+            return null;
+
+        var assembly = GetBridgeSchemaAssemblyAsync().GetAwaiter().GetResult();
+        return assembly.GetTypes().FirstOrDefault(type =>
+            typeof(Google.Protobuf.IMessage).IsAssignableFrom(type)
+            && string.Equals(type.Name, messageTypeName, StringComparison.Ordinal));
+    }
+
+    private Task<Assembly> GetBridgeSchemaAssemblyAsync()
+    {
+        var current = _bridgeSchemaAssemblyTask;
+        if (current != null)
+            return current;
+
+        var created = LoadBridgeSchemaAssemblyAsync();
+        var existing = Interlocked.CompareExchange(ref _bridgeSchemaAssemblyTask, created, null);
+        return existing ?? created;
+    }
+
+    private async Task<Assembly> LoadBridgeSchemaAssemblyAsync()
+    {
+        var protoPath = Path.Combine(_environment.ContentRootPath, "nats", "DDSSim.proto");
+        if (!File.Exists(protoPath))
+            throw new FileNotFoundException("nats/DDSSim.proto ÌååÏùºÏùÑ Ï∞æÏùÑ Ïàò ÏóÜÏäµÎãàÎã§.", protoPath);
+
+        var protoBytes = await File.ReadAllBytesAsync(protoPath);
+        return await _protoCompiler.CompileProtoToAssemblyAsync(protoBytes);
     }
 
     private static bool MatchesSubjectPattern(string pattern, string subject)

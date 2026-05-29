@@ -479,6 +479,7 @@ else
                 if (!_publishRawJsonMode && _publishSchemaFields.Count > 0)
                     BuildPublishJsonFromForm();
 
+                await EnsureBridgeSchemaAssemblyAsync();
                 var subject = BuildBridgeSubject(SelectedBridgeMessage.TypeName);
                 var messageType = ResolveBridgeMessageType(SelectedBridgeMessage.TypeName)
                     ?? throw new InvalidOperationException($"Bridge message type not found: {SelectedBridgeMessage.TypeName}");
@@ -582,16 +583,7 @@ else
             var protoBytes = await File.ReadAllBytesAsync(path);
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
 
-            try
-            {
-                _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
-            }
-            catch (Exception ex)
-            {
-                _bridgeSchemaAssembly = null;
-                _bridgeLoadError = null;
-                Snackbar.Add($"bridge payload 타입 복원 비활성화: {ex.Message}", Severity.Info);
-            }
+            _bridgeSchemaAssembly = null;
 
             var next = services
                 .SelectMany(service => service.Methods)
@@ -730,6 +722,16 @@ else
             .GetTypes()
             .FirstOrDefault(type => typeof(IMessage).IsAssignableFrom(type)
                 && string.Equals(type.Name, typeName, StringComparison.Ordinal));
+
+    private async Task EnsureBridgeSchemaAssemblyAsync()
+    {
+        if (_bridgeSchemaAssembly != null)
+            return;
+
+        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+        var protoBytes = await File.ReadAllBytesAsync(path);
+        _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
+    }
 
     private void OnPublishRawModeChanged(bool raw)
     {

@@ -58,4 +58,26 @@
       Text="schema/proto/nats/DDSSim.proto 가 없습니다. ASAP NATS 테스트용 proto를 직접 배치하세요." />
   </Target>
 
+  <Target Name="CopyGrpcToolsToPublish" AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' and Exists('$(PkgGrpc_Tools)\tools\linux_x64\protoc') and Exists('$(PkgGrpc_Tools)\build\native\include')">
+    <ItemGroup>
+      <GrpcToolPublishFiles Include="$(PkgGrpc_Tools)\tools\linux_x64\protoc">
+        <TargetPath>tools/protoc</TargetPath>
+      </GrpcToolPublishFiles>
+      <GrpcToolPublishFiles Include="$(PkgGrpc_Tools)\tools\linux_x64\grpc_csharp_plugin">
+        <TargetPath>tools/grpc_csharp_plugin</TargetPath>
+      </GrpcToolPublishFiles>
+      <GrpcToolIncludeFiles Include="$(PkgGrpc_Tools)\build\native\include\**\*" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(PublishDir)tools" />
+    <MakeDir Directories="$(PublishDir)tools\include" />
+    <Copy SourceFiles="@(GrpcToolPublishFiles)"
+          DestinationFiles="@(GrpcToolPublishFiles->'$(PublishDir)%(TargetPath)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(GrpcToolIncludeFiles)"
+          DestinationFiles="@(GrpcToolIncludeFiles->'$(PublishDir)tools\include\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

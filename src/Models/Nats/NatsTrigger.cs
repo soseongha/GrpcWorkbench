@@ -16,6 +16,8 @@ public sealed class NatsTrigger
     public NatsTriggerType Type { get; set; } = NatsTriggerType.Periodic;
     public bool Enabled { get; set; }
 
+    public bool UseBridgeMessage { get; set; }
+    public string? BridgeMessageType { get; set; }
     public string Subject { get; set; } = string.Empty;
     public string PayloadText { get; set; } = "{}";
     public string? Scenario { get; set; }

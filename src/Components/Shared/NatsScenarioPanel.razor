@@ -1,13 +1,22 @@
 ﻿@using System.Text.Json
+@using System.Text
+@using System.Reflection
 @using Microsoft.AspNetCore.Components.Forms
+@using ASAP.Grpc
 @using ASAP.Models.Nats
 @using ASAP.Models.Session
+@using ASAP.Models.Ui
 @using ASAP.Nats
 @using ASAP.Services
+@using Google.Protobuf
 @inject INatsSessionService NatsSessions
 @inject NatsTriggerService Triggers
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject IProtoLoader ProtoLoader
+@inject IDynamicProtoCompiler ProtoCompiler
+@inject IJsonMessageConverter JsonMessageConverter
+@inject IWebHostEnvironment WebHostEnv
 @implements IDisposable
 
 @if (Session != null)
@@ -141,7 +150,31 @@
                 <div class="wb-home-form">
                     <MudTextField @bind-Value="editor.Name" Label="이름" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     <MudTextField @bind-Value="editor.Scenario" Label="시나리오" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    <MudTextField @bind-Value="editor.Subject" Label="발행 subject" Placeholder="example.subject" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudCheckBox T="bool"
+                                 Value="editor.UseBridgeMessage"
+                                 ValueChanged="OnEditingBridgeModeChanged"
+                                 Label="DDSSim.proto 기반 bridge message 편집"
+                                 Disabled="@(_bridgeMessages.Count == 0)"
+                                 Color="Color.Primary" />
+                    @if (editor.UseBridgeMessage && _bridgeMessages.Count > 0)
+                    {
+                        <MudSelect T="string"
+                                   Value="@(_selectedScenarioBridgeMessageType ?? string.Empty)"
+                                   ValueChanged="OnEditingBridgeMessageTypeChanged"
+                                   Label="메시지 타입"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            @foreach (var option in _bridgeMessages)
+                            {
+                                <MudSelectItem T="string" Value="@option.TypeName">@option.TypeName</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudTextField Value="editor.Subject" Label="발행 subject" Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" />
+                    }
+                    else
+                    {
+                        <MudTextField @bind-Value="editor.Subject" Label="발행 subject" Placeholder="example.subject" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    }
                     <MudSelect T="NatsStepMode" @bind-Value="editor.Mode" Label="모드" Variant="Variant.Outlined" Margin="Margin.Dense">
                         <MudSelectItem Value="NatsStepMode.Manual">수동</MudSelectItem>
                         <MudSelectItem Value="NatsStepMode.Periodic">주기</MudSelectItem>
@@ -169,7 +202,44 @@
                     }
                 </div>
 
-                <MudTextField @bind-Value="editor.PayloadText" Label="Payload" Lines="10" FullWidth="true" Class="wb-mono mt-2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                @if (editor.UseBridgeMessage && _bridgeMessages.Count > 0)
+                {
+                    <div class="d-flex align-center mt-2" style="gap:8px;">
+                        <div class="wb-inline-note">DDSSim.proto 필드를 직접 편집합니다. 필요할 때만 raw JSON 으로 전환하세요.</div>
+                        <MudSpacer />
+                        <MudButton Variant="@(_scenarioRawJsonMode ? Variant.Outlined : Variant.Filled)"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   OnClick="@(() => SetScenarioRawJsonMode(false))">컴포넌트 편집</MudButton>
+                        <MudButton Variant="@(_scenarioRawJsonMode ? Variant.Filled : Variant.Outlined)"
+                                   Color="Color.Secondary"
+                                   Size="Size.Small"
+                                   OnClick="@(() => SetScenarioRawJsonMode(true))">Raw JSON</MudButton>
+                    </div>
+                    @if (_editingSchemaFields.Count > 0 && !_scenarioRawJsonMode)
+                    {
+                        <div class="wb-panel wb-panel--contain pa-3 mt-2">
+                            @foreach (var field in _editingSchemaFields)
+                            {
+                                <div class="mb-2">
+                                    <SchemaFormField Field="field" OnChanged="OnScenarioSchemaChanged" />
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <MudTextField @bind-Value="editor.PayloadText" Label="Payload JSON" Lines="10" FullWidth="true" Class="wb-mono mt-2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_bridgeLoadError))
+                    {
+                        <div class="wb-inline-note mt-2" style="color:var(--mud-palette-warning);">@_bridgeLoadError</div>
+                    }
+                }
+                else
+                {
+                    <MudTextField @bind-Value="editor.PayloadText" Label="Payload" Lines="10" FullWidth="true" Class="wb-mono mt-2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                }
 
                 <div class="d-flex align-center mt-3" style="gap:8px;">
                     <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => FireScenarioStep(editor))">지금 1회 발행</MudButton>
@@ -188,10 +258,17 @@
 
     private bool _runningScenario;
     private NatsScenarioStep? _editingStep;
+    private readonly List<BridgeMessageOption> _bridgeMessages = [];
+    private readonly List<SchemaField> _editingSchemaFields = [];
+    private Assembly? _bridgeSchemaAssembly;
+    private string? _bridgeLoadError;
+    private string? _selectedScenarioBridgeMessageType;
+    private bool _scenarioRawJsonMode;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Triggers.Changed += OnTriggersChanged;
+        await LoadBridgeMessagesAsync();
     }
 
     private void AddScenarioGroup()
@@ -204,10 +281,13 @@
         if (Session == null)
             return;
 
+        var selectedBridge = _bridgeMessages.FirstOrDefault();
         var step = new NatsScenarioStep
         {
             Scenario = string.IsNullOrWhiteSpace(scenario) ? CreateScenarioName() : scenario.Trim(),
-            Subject = "example.subject",
+            UseBridgeMessage = selectedBridge != null,
+            BridgeMessageType = selectedBridge?.TypeName,
+            Subject = selectedBridge != null ? BuildBridgeSubject(selectedBridge.TypeName) : "example.subject",
             PayloadText = "{}",
             AutoEnabled = false,
         };
@@ -219,12 +299,15 @@
     private void EditScenarioStep(NatsScenarioStep step)
     {
         _editingStep = step;
+        SyncEditingStepSchema(step);
     }
 
-    private void SaveScenarioStepEditor()
+    private async Task SaveScenarioStepEditor()
     {
         if (_editingStep == null)
             return;
+
+        await PrepareEditingStepAsync(_editingStep);
 
         Snackbar.Add($"단계 저장: {ScenarioStepDisplayName(_editingStep)}", Severity.Success);
         _editingStep = null;
@@ -358,6 +441,8 @@
                     _ => NatsTriggerType.Periodic,
                 },
                 Enabled = true,
+                UseBridgeMessage = step.UseBridgeMessage,
+                BridgeMessageType = step.BridgeMessageType,
                 Subject = step.Subject,
                 PayloadText = step.PayloadText,
                 IntervalMs = step.IntervalMs,
@@ -397,10 +482,25 @@
         if (Session == null)
             return;
 
+        await PrepareEditingStepAsync(step);
+
         var repeatCount = Math.Max(1, step.RepeatCount);
         for (var repeatIndex = 0; repeatIndex < repeatCount; repeatIndex++)
         {
-            await NatsSessions.PublishTextAsync(Session.SessionId, step.Subject, step.PayloadText);
+            if (step.UseBridgeMessage)
+            {
+                var messageType = ResolveBridgeMessageType(step.BridgeMessageType);
+                if (messageType == null)
+                    throw new InvalidOperationException($"NATS bridge 메시지 타입을 찾을 수 없습니다: {step.BridgeMessageType}");
+
+                var message = await JsonMessageConverter.JsonToMessageAsync(step.PayloadText, messageType);
+                await NatsSessions.PublishBinaryAsync(Session.SessionId, step.Subject, message.ToByteArray(), step.PayloadText);
+            }
+            else
+            {
+                await NatsSessions.PublishTextAsync(Session.SessionId, step.Subject, step.PayloadText);
+            }
+
             if (step.DelayAfterMs > 0 && repeatIndex < repeatCount - 1)
                 await Task.Delay(step.DelayAfterMs);
         }
@@ -432,6 +532,8 @@
                 Id = string.IsNullOrWhiteSpace(step.Id) ? Guid.NewGuid().ToString() : step.Id,
                 Name = step.Name,
                 Scenario = step.Scenario,
+                UseBridgeMessage = step.UseBridgeMessage,
+                BridgeMessageType = step.BridgeMessageType,
                 Subject = step.Subject,
                 PayloadText = step.PayloadText,
                 RepeatCount = step.RepeatCount,
@@ -464,7 +566,9 @@
             .Any(trigger => string.Equals(NormalizeScenarioName(trigger.Scenario), NormalizeScenarioName(scenario), StringComparison.OrdinalIgnoreCase));
 
     private static string ScenarioStepDisplayName(NatsScenarioStep step)
-        => string.IsNullOrWhiteSpace(step.Name) ? step.Subject : step.Name;
+        => string.IsNullOrWhiteSpace(step.Name)
+            ? (step.UseBridgeMessage && !string.IsNullOrWhiteSpace(step.BridgeMessageType) ? step.BridgeMessageType : step.Subject)
+            : step.Name;
 
     private string ScenarioStepStatusLabel(NatsScenarioStep step)
     {
@@ -509,6 +613,362 @@
             return "(empty)";
         var trimmed = step.PayloadText.Trim();
         return trimmed.Length <= 120 ? trimmed : $"{trimmed[..120]}...";
+    }
+
+    private async Task LoadBridgeMessagesAsync()
+    {
+        try
+        {
+            var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+            var protoBytes = await File.ReadAllBytesAsync(path);
+            var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
+
+            _bridgeSchemaAssembly = null;
+
+            var next = services
+                .SelectMany(service => service.Methods)
+                .Where(method => !string.IsNullOrWhiteSpace(method.InputType)
+                    && !string.Equals(method.InputType, "google.protobuf.Empty", StringComparison.Ordinal))
+                .GroupBy(method => method.InputType, StringComparer.Ordinal)
+                .Select(group => new BridgeMessageOption
+                {
+                    TypeName = StripPackagePrefix(group.Key),
+                    InputSchema = group.Select(method => method.InputSchema).FirstOrDefault(schema => !string.IsNullOrWhiteSpace(schema))
+                })
+                .OrderBy(option => option.TypeName, StringComparer.Ordinal)
+                .ToList();
+
+            _bridgeMessages.Clear();
+            _bridgeMessages.AddRange(next);
+            _bridgeLoadError = null;
+        }
+        catch (Exception ex)
+        {
+            _bridgeSchemaAssembly = null;
+            _bridgeLoadError = $"nats/DDSSim.proto 로드 실패: {ex.Message}";
+        }
+    }
+
+    private Task OnEditingBridgeModeChanged(bool enabled)
+    {
+        if (_editingStep == null)
+            return Task.CompletedTask;
+
+        _editingStep.UseBridgeMessage = enabled && _bridgeMessages.Count > 0;
+        if (_editingStep.UseBridgeMessage)
+        {
+            _selectedScenarioBridgeMessageType ??= _editingStep.BridgeMessageType ?? _bridgeMessages.FirstOrDefault()?.TypeName;
+            ApplySelectedScenarioBridgeMessage();
+        }
+        else
+        {
+            _editingSchemaFields.Clear();
+            _scenarioRawJsonMode = true;
+            _editingStep.BridgeMessageType = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task OnEditingBridgeMessageTypeChanged(string typeName)
+    {
+        _selectedScenarioBridgeMessageType = typeName;
+        ApplySelectedScenarioBridgeMessage();
+        return Task.CompletedTask;
+    }
+
+    private void SetScenarioRawJsonMode(bool raw)
+    {
+        _scenarioRawJsonMode = raw;
+        if (_editingStep == null || _editingSchemaFields.Count == 0)
+            return;
+
+        if (raw)
+            BuildScenarioJsonFromForm();
+        else
+            TryPopulateSchemaFieldsFromJson(_editingSchemaFields, _editingStep.PayloadText);
+    }
+
+    private Task OnScenarioSchemaChanged()
+    {
+        if (_editingStep != null)
+            BuildScenarioJsonFromForm();
+
+        return Task.CompletedTask;
+    }
+
+    private void SyncEditingStepSchema(NatsScenarioStep step)
+    {
+        _editingSchemaFields.Clear();
+        _scenarioRawJsonMode = false;
+
+        if (!step.UseBridgeMessage || _bridgeMessages.Count == 0)
+        {
+            _selectedScenarioBridgeMessageType = null;
+            return;
+        }
+
+        _selectedScenarioBridgeMessageType = !string.IsNullOrWhiteSpace(step.BridgeMessageType)
+            ? step.BridgeMessageType
+            : _bridgeMessages.FirstOrDefault()?.TypeName;
+        ApplySelectedScenarioBridgeMessage(step.PayloadText);
+    }
+
+    private void ApplySelectedScenarioBridgeMessage(string? existingJson = null)
+    {
+        if (_editingStep == null)
+            return;
+
+        var option = _bridgeMessages.FirstOrDefault(message => string.Equals(message.TypeName, _selectedScenarioBridgeMessageType, StringComparison.Ordinal));
+        if (option == null)
+            return;
+
+        _editingStep.UseBridgeMessage = true;
+        _editingStep.BridgeMessageType = option.TypeName;
+        _editingStep.Subject = BuildBridgeSubject(option.TypeName);
+        _editingSchemaFields.Clear();
+        _editingSchemaFields.AddRange(ParseSchemaFields(option.InputSchema));
+
+        var payloadJson = string.IsNullOrWhiteSpace(existingJson) ? _editingStep.PayloadText : existingJson;
+        _scenarioRawJsonMode = _editingSchemaFields.Count == 0 || !TryPopulateSchemaFieldsFromJson(_editingSchemaFields, payloadJson);
+
+        if (!_scenarioRawJsonMode)
+            BuildScenarioJsonFromForm();
+        else if (string.IsNullOrWhiteSpace(_editingStep.PayloadText))
+            _editingStep.PayloadText = "{}";
+    }
+
+    private async Task PrepareEditingStepAsync(NatsScenarioStep step)
+    {
+        if (!step.UseBridgeMessage)
+            return;
+
+        step.BridgeMessageType = string.IsNullOrWhiteSpace(step.BridgeMessageType)
+            ? _selectedScenarioBridgeMessageType
+            : step.BridgeMessageType;
+        if (string.IsNullOrWhiteSpace(step.BridgeMessageType))
+            throw new InvalidOperationException("bridge message 타입을 먼저 선택하세요.");
+
+        step.Subject = BuildBridgeSubject(step.BridgeMessageType);
+        if (ReferenceEquals(step, _editingStep) && !_scenarioRawJsonMode && _editingSchemaFields.Count > 0)
+            BuildScenarioJsonFromForm();
+
+        if (_bridgeSchemaAssembly == null)
+        {
+            await EnsureBridgeSchemaAssemblyAsync();
+        }
+    }
+
+    private async Task EnsureBridgeSchemaAssemblyAsync()
+    {
+        if (_bridgeSchemaAssembly != null)
+            return;
+
+        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+        var protoBytes = await File.ReadAllBytesAsync(path);
+        _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
+    }
+
+    private Type? ResolveBridgeMessageType(string? typeName)
+        => _bridgeSchemaAssembly?
+            .GetTypes()
+            .FirstOrDefault(type => typeof(IMessage).IsAssignableFrom(type)
+                && string.Equals(type.Name, typeName, StringComparison.Ordinal));
+
+    private void BuildScenarioJsonFromForm()
+    {
+        if (_editingStep == null)
+            return;
+
+        _editingStep.PayloadText = JsonSerializer.Serialize(
+            BuildJsonObject(_editingSchemaFields),
+            new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string BuildBridgeSubject(string typeName) => $"dds.sidecar.to-dds.{typeName}";
+
+    private static string StripPackagePrefix(string fullName)
+    {
+        if (string.IsNullOrEmpty(fullName))
+            return fullName;
+
+        var lastDot = fullName.LastIndexOf('.');
+        return lastDot >= 0 ? fullName[(lastDot + 1)..] : fullName;
+    }
+
+    private static List<SchemaField> ParseSchemaFields(string? schema)
+    {
+        if (string.IsNullOrEmpty(schema))
+            return [];
+
+        try
+        {
+            using var doc = JsonDocument.Parse(schema);
+            return ParsePropertiesElement(doc.RootElement);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static List<SchemaField> ParsePropertiesElement(JsonElement element)
+    {
+        if (!element.TryGetProperty("properties", out var props))
+            return [];
+
+        var fields = new List<SchemaField>();
+        foreach (var prop in props.EnumerateObject())
+            fields.Add(ParseFieldElement(prop.Name, prop.Value));
+
+        return fields;
+    }
+
+    private static SchemaField ParseFieldElement(string name, JsonElement schema)
+    {
+        var field = new SchemaField { Name = name };
+
+        if (schema.TryGetProperty("enum", out var enumProp))
+        {
+            field.Type = "enum";
+            field.EnumValues = enumProp.EnumerateArray().Select(value => value.GetString() ?? string.Empty).ToArray();
+            field.Value = field.EnumValues.FirstOrDefault() ?? string.Empty;
+            return field;
+        }
+
+        if (!schema.TryGetProperty("type", out var typeProp))
+            return field;
+
+        field.Type = typeProp.GetString() ?? "string";
+        switch (field.Type)
+        {
+            case "object":
+                field.Children = ParsePropertiesElement(schema);
+                field.Value = "{}";
+                break;
+            case "array":
+                if (schema.TryGetProperty("items", out var itemsEl))
+                    field.ItemTemplate = ParseFieldElement("0", itemsEl);
+                field.Value = "[]";
+                break;
+            case "integer":
+            case "number":
+                field.Value = "0";
+                break;
+            default:
+                field.Value = string.Empty;
+                break;
+        }
+
+        return field;
+    }
+
+    private static Dictionary<string, object?> BuildJsonObject(List<SchemaField> fields)
+    {
+        var obj = new Dictionary<string, object?>();
+        foreach (var field in fields)
+            obj[field.Name] = BuildFieldValue(field);
+        return obj;
+    }
+
+    private static bool TryPopulateSchemaFieldsFromJson(List<SchemaField> fields, string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return false;
+
+            ApplyObjectToFields(fields, doc.RootElement);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void ApplyObjectToFields(List<SchemaField> fields, JsonElement element)
+    {
+        foreach (var field in fields)
+        {
+            if (!element.TryGetProperty(field.Name, out var value))
+                continue;
+
+            ApplyJsonToField(field, value);
+        }
+    }
+
+    private static void ApplyJsonToField(SchemaField field, JsonElement value)
+    {
+        switch (field.Type)
+        {
+            case "boolean":
+                field.BoolValue = value.ValueKind == JsonValueKind.True || (value.ValueKind == JsonValueKind.False ? false : field.BoolValue);
+                break;
+            case "integer":
+            case "number":
+            case "string":
+            case "enum":
+                field.Value = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
+                break;
+            case "object":
+                if (field.Children.Count > 0 && value.ValueKind == JsonValueKind.Object)
+                    ApplyObjectToFields(field.Children, value);
+                else
+                    field.Value = value.GetRawText();
+                break;
+            case "array":
+                if (field.ItemTemplate != null && value.ValueKind == JsonValueKind.Array)
+                {
+                    field.ArrayItems.Clear();
+                    var index = 0;
+                    foreach (var item in value.EnumerateArray())
+                    {
+                        var clone = field.ItemTemplate.DeepClone(index.ToString());
+                        ApplyJsonToField(clone, item);
+                        field.ArrayItems.Add(clone);
+                        index++;
+                    }
+                }
+                else
+                {
+                    field.Value = value.GetRawText();
+                }
+                break;
+            default:
+                field.Value = value.ToString();
+                break;
+        }
+    }
+
+    private static object? BuildFieldValue(SchemaField field) => field.Type switch
+    {
+        "boolean" => field.BoolValue,
+        "integer" => long.TryParse(field.Value, out var longValue) ? longValue : 0L,
+        "number" => double.TryParse(field.Value, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var doubleValue) ? doubleValue : 0.0,
+        "object" when field.Children.Count > 0 => BuildJsonObject(field.Children),
+        "object" => TryParseRaw(field.Value),
+        "array" when field.ItemTemplate != null => field.ArrayItems.Select(BuildFieldValue).ToArray(),
+        "array" => TryParseRaw(field.Value),
+        _ => (object?)field.Value
+    };
+
+    private static object? TryParseRaw(string value)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(value);
+            return doc.RootElement.Clone();
+        }
+        catch
+        {
+            return value;
+        }
     }
 
     private string CreateScenarioName()
@@ -558,6 +1018,12 @@
     private sealed class ScenarioExportPayload
     {
         public List<NatsScenarioStep> Steps { get; set; } = [];
+    }
+
+    private sealed class BridgeMessageOption
+    {
+        public string TypeName { get; set; } = string.Empty;
+        public string? InputSchema { get; set; }
     }
 
     private sealed record NatsScenarioGroupVm(string Name, List<NatsScenarioStep> OrderedSteps);
