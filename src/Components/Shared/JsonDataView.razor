@@ -85,6 +85,10 @@ else if (_hasValue)
             }
         </div>
     }
+    else if (TryGetNestedJson(_value, out var nestedJson))
+    {
+        <JsonDataView Json="@nestedJson" Depth="@(Depth + 1)" AutoExpandDepth="@AutoExpandDepth" />
+    }
     else
     {
         <span class="wb-json-scalar @ScalarCss(_value)">@FormatScalar(_value)</span>
@@ -104,6 +108,10 @@ else if (_hasValue)
     private string? _expansionToken;
     private int _visibleArrayCount;
     private int _visibleObjectPropertyCount;
+    private string? _lastJson;
+    private int _lastDepth = -1;
+    private int _lastAutoExpandDepth = -1;
+    private int _objectLength;
 
     private const int InitialArrayRenderCount = 50;
     private const int ArrayRenderBatchSize = 100;
@@ -112,8 +120,21 @@ else if (_hasValue)
 
     protected override void OnParametersSet()
     {
+        if (Element is null
+            && string.Equals(_lastJson, Json, StringComparison.Ordinal)
+            && _lastDepth == Depth
+            && _lastAutoExpandDepth == AutoExpandDepth
+            && (_hasValue || _parseError != null))
+        {
+            return;
+        }
+
         _parseError = null;
         _hasValue = false;
+        _objectLength = 0;
+        _lastJson = Element is null ? Json : null;
+        _lastDepth = Depth;
+        _lastAutoExpandDepth = AutoExpandDepth;
 
         if (Element is JsonElement element)
         {
@@ -125,7 +146,7 @@ else if (_hasValue)
         {
             try
             {
-                using var doc = JsonDocument.Parse(Json);
+                using var doc = JsonDocument.Parse(NormalizeJsonInput(Json));
                 _value = doc.RootElement.Clone();
                 _hasValue = true;
             }
@@ -137,6 +158,7 @@ else if (_hasValue)
 
         if (_hasValue)
         {
+            _objectLength = _value.ValueKind == JsonValueKind.Object ? _value.EnumerateObject().Count() : 0;
             var expansionToken = BuildExpansionToken(_value, Depth);
             if (!string.Equals(_expansionToken, expansionToken, StringComparison.Ordinal))
             {
@@ -163,9 +185,7 @@ else if (_hasValue)
             : 0;
 
     private int ObjectLength()
-        => _value.ValueKind == JsonValueKind.Object
-            ? _value.EnumerateObject().Count()
-            : 0;
+        => _value.ValueKind == JsonValueKind.Object ? _objectLength : 0;
 
     private int VisibleObjectPropertyCount()
         => _value.ValueKind == JsonValueKind.Object
@@ -227,6 +247,37 @@ else if (_hasValue)
             JsonValueKind.Null => "null",
             _ => value.ToString()
         };
+
+    private static bool TryGetNestedJson(JsonElement value, out string json)
+    {
+        json = string.Empty;
+        if (value.ValueKind != JsonValueKind.String)
+            return false;
+
+        var text = value.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(text) || (text[0] != '{' && text[0] != '['))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            json = JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeJsonInput(string json)
+    {
+        var trimmed = json.Trim();
+        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
+            return trimmed;
+
+        return "{" + trimmed.Trim(',') + "}";
+    }
 
     private static string ScalarCss(JsonElement value)
         => value.ValueKind switch

@@ -21,6 +21,7 @@ packages/*
 !packages/grpc.net.clientfactory.2.64.0.nupkg
 !packages/grpc.net.common.2.64.0.nupkg
 !packages/grpc.tools.2.64.0.nupkg
+!packages/grpc.tools.2.78.0.nupkg
 !packages/microsoft.aspnetcore.authorization.8.0.8.nupkg
 !packages/microsoft.aspnetcore.components.8.0.8.nupkg
 !packages/microsoft.aspnetcore.components.analyzers.8.0.8.nupkg

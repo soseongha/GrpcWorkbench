@@ -64,8 +64,8 @@
             <div class="d-flex align-center flex-wrap" style="gap:10px;">
                 <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Color="Color.Warning" />
                 <div style="flex:1 1 320px;min-width:0;">
-                    <div class="wb-panel-heading">다른 탭이 현재 활성입니다</div>
-                    <div class="wb-inline-note">경고 배너만 표시 중이에요. 편집과 확인은 계속 가능하고, 이 탭을 다시 앞으로 가져오려면 오른쪽 버튼을 누르면 돼요.</div>
+                    <div class="wb-panel-heading" title="다른 탭이 현재 활성입니다">비활성</div>
+                    <div class="wb-inline-note" title="편집과 확인은 계속 가능하고, 이 탭을 다시 앞으로 가져오려면 오른쪽 버튼을 누르면 됩니다.">다른 탭 사용 중</div>
                 </div>
                 <MudButton Variant="Variant.Outlined" Color="Color.Warning"
                            StartIcon="@Icons.Material.Filled.Refresh"
@@ -135,9 +135,9 @@
         @if (ShouldShowNewTabPanel())
         {
             <div class="wb-panel wb-panel--contain pa-4 mt-3">
-                <div class="wb-panel-kicker">새 탭</div>
-                <div class="wb-panel-heading">먼저 열 작업 공간 하나를 고르세요</div>
-                <div class="wb-inline-note mt-2">@(HasOpenTabs() ? "새 탭은 현재 흐름을 끊지 않고 나란히 여는 용도예요." : "아직 열린 탭이 없어요. gRPC 연결 탭, DDS 작업 탭, NATS 브로커 탭 가운데 하나부터 열어 보세요.")</div>
+                <div class="wb-panel-kicker">새로</div>
+                <div class="wb-panel-heading" title="먼저 열 작업 공간 하나를 고르세요">탭</div>
+                <div class="wb-inline-note mt-2" title="@(HasOpenTabs() ? "새 탭은 현재 흐름을 끊지 않고 나란히 여는 용도입니다." : "아직 열린 탭이 없습니다. gRPC, DDS, NATS 중 하나부터 열어 보세요.")">작업 선택</div>
 
                 <div class="wb-mode-strip mt-3">
                     <button type="button"
@@ -166,8 +166,8 @@
                 @if (_newTabKind == WorkbenchNewTabKind.GrpcSession)
                 {
                     <div class="wb-subpanel mt-3">
-                        <div class="wb-panel-kicker">gRPC 세션 탭</div>
-                        <div class="wb-panel-heading">소켓 연결 후 전용 탭으로 열기</div>
+                        <div class="wb-panel-kicker">gRPC</div>
+                        <div class="wb-panel-heading" title="소켓 연결 후 전용 탭으로 열기">세션</div>
                         <div class="wb-home-form mt-3">
                             <MudTextField @bind-Value="_newGrpcSessionName"
                                           Label="탭 이름" Placeholder="예: B 피어 테스트"
@@ -193,7 +193,7 @@
                                 }
                             </MudButton>
                         </div>
-                        <div class="wb-inline-note mt-3">탭 이름은 비워도 괜찮아요. 소켓 경로나 세션 ID를 기준으로 자동 이름을 붙여요. 내 소켓: @_mySocketPath</div>
+                        <div class="wb-inline-note mt-3" title="탭 이름은 비워도 괜찮습니다. 소켓 경로나 세션 ID를 기준으로 자동 이름을 붙입니다.">내 소켓: @_mySocketPath</div>
                     </div>
                 }
                 else if (_newTabKind == WorkbenchNewTabKind.DdsSession)
@@ -230,8 +230,8 @@
         <div class="d-flex align-center flex-wrap mb-2" style="gap:8px;">
             <MudIcon Icon="@Icons.Material.Filled.Cable" Size="Size.Small" Color="@(_session == null ? Color.Default : Color.Success)" />
             <div>
-                <div class="wb-panel-kicker">세션 작업</div>
-                <div class="wb-panel-heading">활성 대상과 proto 기준만 먼저 정합니다</div>
+                <div class="wb-panel-kicker">세션</div>
+                <div class="wb-panel-heading" title="활성 대상과 proto 기준만 먼저 정합니다">작업</div>
             </div>
             <MudChip T="string" Size="Size.Small" Color="@(_session == null ? Color.Default : Color.Success)" Variant="Variant.Text" Class="ma-0">@(_session == null ? "미연결" : "연결됨")</MudChip>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@_services.Count 개 서비스</MudChip>
@@ -292,8 +292,8 @@
             <div class="wb-subpanel mt-3">
                 <div class="wb-subpanel-head mb-3">
                     <div>
-                        <div class="wb-panel-kicker">로컬 스트림</div>
-                        <div class="wb-panel-heading">필요한 스트림만 열어 두고 재사용합니다</div>
+                        <div class="wb-panel-kicker">로컬</div>
+                        <div class="wb-panel-heading" title="필요한 스트림만 열어 두고 재사용합니다">스트림</div>
                     </div>
                     <div class="wb-chip-row">
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@openLocalStreams.Count 개 열림</MudChip>
@@ -405,7 +405,7 @@
                     <MudIcon Icon="@Icons.Material.Filled.Sensors" Size="Size.Small" Color="Color.Info" />
                     <div>
                         <div class="wb-panel-kicker">수신</div>
-                        <div class="wb-panel-heading">이 인스턴스에서 관찰된 RPC 트래픽</div>
+                        <div class="wb-panel-heading" title="이 인스턴스에서 관찰된 RPC 트래픽">트래픽</div>
                     </div>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@visibleIncomingRpcCount 개 RPC</MudChip>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0"
@@ -476,7 +476,7 @@
                                     <div class="wb-detail-head-copy">
                                         <div class="wb-panel-kicker">상세</div>
                                         <div class="d-flex align-center" style="gap:6px;">
-                                            <div class="wb-panel-heading">수신 스트림/호출</div>
+                                            <div class="wb-panel-heading" title="수신 스트림/호출">호출</div>
                                             <MudTooltip Text="수신 집계는 Service.Method 기준으로 정리해 두고, 펼쳤을 때만 프레임 상세를 보여줘요. 오래된 유휴 RPC 정리와 전체 스냅샷 저장도 여기서 할 수 있어요.">
                                                 <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="cursor:help;color:var(--mud-palette-text-secondary);" />
                                             </MudTooltip>
@@ -602,8 +602,8 @@
                                    Size="Size.Small" OnClick="@(() => _triggersExpanded = !_triggersExpanded)" />
                     <MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" Color="Color.Warning" />
                     <div>
-                        <div class="wb-panel-kicker">gRPC 자동화</div>
-                        <div class="wb-panel-heading">메시지 단계마다 자동 조건과 수동 발사를 함께 관리</div>
+                        <div class="wb-panel-kicker">gRPC</div>
+                        <div class="wb-panel-heading" title="메시지 단계마다 자동 조건과 수동 발사를 함께 관리합니다">자동화</div>
                     </div>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@triggerSnapshot.Count</MudChip>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">시나리오 @configuredScenarioCount</MudChip>
@@ -621,7 +621,7 @@
                 </div>
                 @if (_triggersExpanded)
                 {
-                    <div class="wb-inline-note mb-3">시나리오 추가를 누르면 첫 단계가 포함된 새 시나리오를 만들어요. 모든 단계는 시나리오 안에서만 관리하고, 여기서는 `수동 전체 실행`, `자동 단계 시작`, `전체 시작`으로 시나리오를 제어해요.</div>
+                    <div class="wb-inline-note mb-3" title="시나리오 추가를 누르면 첫 단계가 포함된 새 시나리오를 만들고, 수동/자동/전체 실행을 시나리오 단위로 제어합니다.">시나리오 단위</div>
                     var scenarioGroups = BuildScenarioGroups(triggerSnapshot);
                     @if (scenarioGroups.Count > 0)
                     {
@@ -660,7 +660,7 @@
                                                 <MudChip T="string" Size="Size.Small" Color="@(group.OrderedSteps.Any(step => step.Enabled) ? Color.Success : Color.Default)" Variant="Variant.Text" Class="ma-0">@group.OrderedSteps.Count(step => step.Enabled) 동작 중</MudChip>
                                             </div>
                                         </div>
-                                        <div class="wb-inline-note mt-2">수동 전체 실행은 모든 단계를 순서대로 한 번 보내요. 자동 단계 시작은 이 시나리오의 자동 단계를 백그라운드에서 계속 유지해요.</div>
+                                        <div class="wb-inline-note mt-2" title="수동 전체 실행은 모든 단계를 순서대로 한 번 보내고, 자동 단계 시작은 이 시나리오의 자동 단계를 백그라운드에서 유지합니다.">범위: @group.Name</div>
                                         <div class="wb-scenario-step-actions mt-2">
                                             <MudButton Variant="Variant.Text" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.Add"
@@ -813,7 +813,7 @@
                                     <div class="wb-detail-head-copy">
                                         <div class="wb-panel-kicker">상세</div>
                                         <div class="d-flex align-center" style="gap:6px;">
-                                            <div class="wb-panel-heading">송신 스트림/호출</div>
+                                            <div class="wb-panel-heading" title="송신 스트림/호출">호출</div>
                                             <MudTooltip Text="송신 집계는 Service.Method 기준으로 정리되고, 현재 열린 탭 세션 기준 메시지만 보여줍니다.">
                                                 <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="cursor:help;color:var(--mud-palette-text-secondary);" />
                                             </MudTooltip>
@@ -899,15 +899,6 @@
             </div>
         </MudItem>
 
-        @* ════════ 하단: 세션 / 이벤트 로그 ════════ *@
-        <MudItem xs="12" Class="wb-section-order-5">
-            <WorkbenchLogPanel Expanded="@_logsExpanded"
-                               LogCount="@State.LogCount"
-                               Logs="@(_logsExpanded ? State.SnapshotLogs() : Array.Empty<LogEntry>())"
-                               OnToggle="ToggleLogsExpanded"
-                               OnClear="ClearLogs" />
-        </MudItem>
-
     </MudGrid>
 
     @if (_editingTrigger != null)
@@ -939,7 +930,7 @@
                                           Margin="Margin.Dense" Variant="Variant.Outlined" />
                         </MudItem>
                         <MudItem xs="12" sm="6">
-                            <div class="wb-inline-note" style="margin-top:12px;">시나리오 @NormalizeScenarioName(editor.Scenario) 안의 단계예요. 순서는 카드의 위/아래 버튼으로만 바꿔 주세요.</div>
+                            <div class="wb-inline-note" style="margin-top:12px;" title="시나리오 안의 단계입니다. 순서는 카드의 위/아래 버튼으로만 바꿔 주세요.">시나리오 @NormalizeScenarioName(editor.Scenario)</div>
                         </MudItem>
                         <MudItem xs="12" sm="6">
                             <MudSelect T="TriggerType" Value="editor.Type"
@@ -1050,7 +1041,7 @@
                                 </MudSelect>
                                 @if (compatibleOpenLocalStreams.Count == 0)
                                 {
-                                    <div class="wb-inline-note" style="margin-top:4px;">지금은 호환되는 열린 로컬 스트림이 없어서 이 드롭다운이 비활성 상태예요.</div>
+                                    <div class="wb-inline-note" style="margin-top:4px;" title="지금은 호환되는 열린 로컬 스트림이 없어서 이 드롭다운이 비활성 상태입니다.">스트림 없음</div>
                                 }
                             }
                         </MudItem>
@@ -1347,7 +1338,7 @@
         State.Evicted += OnEvicted;
 
         // 미들웨어 알림은 State가 직접 구독함. 여기선 _dirty만 보고 최대 125Hz로 render.
-        _uiTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(8));
+        _uiTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
         _ = Task.Run(async () =>
         {
             try
@@ -1667,16 +1658,27 @@
 
     private async Task CloseNatsSession(string sessionId)
     {
-        await NatsSessions.DeleteAsync(sessionId);
+        var wasActive = _activeNatsSession?.SessionId == sessionId;
+        var deleteTask = NatsSessions.DeleteAsync(sessionId);
         RefreshNatsSessionTabs();
-        if (_activeNatsSession?.SessionId == sessionId)
+        if (wasActive)
         {
             _activeNatsSession = null;
             await ActivatePreferredFallbackTab();
-            return;
+        }
+        else
+        {
+            await InvokeAsync(StateHasChanged);
         }
 
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await deleteTask;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"NATS 세션 정리 중 오류가 발생했습니다: {ex.Message}", Severity.Warning);
+        }
     }
 
     private string FormatSessionTabLabel(GrpcSession session)

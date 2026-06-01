@@ -3,6 +3,7 @@ using ASAP.Grpc;
 using ASAP.Nats;
 using ASAP.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.SignalR;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,7 +38,19 @@ builder.WebHost.ConfigureKestrel(options =>
 // ── Services (always all) ────────────────────────────────────────────────────
 builder.Services.AddGrpc();
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(30);
+        options.DisconnectedCircuitMaxRetained = 200;
+        options.JSInteropDefaultCallTimeout = TimeSpan.FromSeconds(30);
+    })
+    .AddHubOptions(options =>
+    {
+        options.ClientTimeoutInterval = TimeSpan.FromSeconds(120);
+        options.HandshakeTimeout = TimeSpan.FromSeconds(30);
+        options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        options.MaximumReceiveMessageSize = 10 * 1024 * 1024;
+    });
 builder.Services.AddMudServices();
 
 builder.Services.AddSingleton<ISessionService, SessionService>();

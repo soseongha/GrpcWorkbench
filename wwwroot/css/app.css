@@ -18,7 +18,9 @@
 
 :root {
   --wb-sans: "AppSans", "Noto Sans KR", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Roboto", "Helvetica Neue", "Arial", sans-serif;
-  --wb-mono: "AppSans", "Noto Sans KR", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+  --wb-mono: "Cascadia Mono", "Consolas", "SFMono-Regular", "AppSans", "Noto Sans KR", monospace;
+  --wb-radius: 8px;
+  --wb-radius-lg: 8px;
 }
 
 html,
@@ -39,6 +41,40 @@ select,
 .mud-popover,
 .mud-tooltip {
   font-family: var(--wb-sans);
+}
+
+body {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-background) 96%, white 2%), var(--mud-palette-background));
+}
+
+.mud-appbar {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20);
+}
+
+.mud-button-root {
+  font-weight: 700;
+}
+
+.mud-input-control .mud-input-outlined-border {
+  border-color: color-mix(in srgb, var(--mud-palette-lines-inputs) 92%, var(--mud-palette-text-secondary) 8%);
+}
+
+.mud-input-control:hover .mud-input-outlined-border {
+  border-color: color-mix(in srgb, var(--mud-palette-primary) 42%, var(--mud-palette-lines-inputs));
+}
+
+.wb-brand-mark {
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-secondary) 36%, var(--mud-palette-lines-default));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mud-palette-secondary) 10%, var(--mud-palette-surface));
+  color: color-mix(in srgb, var(--mud-palette-secondary) 82%, var(--mud-palette-text-primary));
+  font-weight: 800;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .wb-section-order-4 {
@@ -145,14 +181,18 @@ select,
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 .wb-panel {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-surface) 94%, white 1%), color-mix(in srgb, var(--mud-palette-surface) 100%, black 3%));
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 86%, white 6%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-surface) 98%, white 2%), color-mix(in srgb, var(--mud-palette-surface) 94%, black 5%));
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 76%, var(--mud-palette-text-secondary) 18%);
   border-radius: var(--wb-radius);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, white 8%, transparent) inset,
+    0 12px 30px rgba(0, 0, 0, 0.18);
 }
 
 .wb-panel--major {
   height: 100%;
+  border-top: 2px solid color-mix(in srgb, var(--mud-palette-primary) 42%, var(--mud-palette-lines-default));
 }
 
 .wb-panel--contain {
@@ -190,7 +230,7 @@ select,
   line-height: 1.3;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--mud-palette-primary);
+  color: color-mix(in srgb, var(--mud-palette-primary) 86%, white 14%);
 }
 
 .wb-panel-heading {
@@ -223,8 +263,8 @@ select,
 .wb-inline-note {
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-info) 18%, var(--mud-palette-lines-default));
-  background: color-mix(in srgb, var(--mud-palette-info) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-info) 30%, var(--mud-palette-lines-default));
+  background: color-mix(in srgb, var(--mud-palette-info) 12%, var(--mud-palette-surface));
   font-size: 0.74rem;
   line-height: 1.45;
   color: var(--mud-palette-text-secondary);
@@ -309,14 +349,14 @@ select,
   gap: 6px;
   align-items: end;
   padding: 6px 10px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 86%, white 4%);
+  border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 74%, var(--mud-palette-text-secondary) 12%);
 }
 
 .wb-session-tab {
   min-width: 0;
   padding: 10px 12px 9px;
   border-radius: 14px 14px 0 0;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 88%, white 4%);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 78%, var(--mud-palette-text-secondary) 12%);
   border-bottom-color: transparent;
   background: linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-background) 52%, white 2%), color-mix(in srgb, var(--mud-palette-background) 24%, transparent));
   display: flex;
@@ -374,15 +414,15 @@ select,
 
 .wb-session-tab:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--mud-palette-primary) 20%, var(--mud-palette-lines-default));
-  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.08);
+  border-color: color-mix(in srgb, var(--mud-palette-primary) 46%, var(--mud-palette-lines-default));
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
 }
 
 .wb-session-tab.is-active {
   z-index: 1;
-  border-color: color-mix(in srgb, var(--mud-palette-primary) 36%, var(--mud-palette-lines-default));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-primary) 12%, var(--mud-palette-surface)), var(--mud-palette-surface));
-  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.1);
+  border-color: color-mix(in srgb, var(--mud-palette-primary) 68%, var(--mud-palette-lines-default));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-primary) 18%, var(--mud-palette-surface)), var(--mud-palette-surface));
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
 }
 
 .wb-session-tab.is-active::after {
@@ -427,13 +467,19 @@ select,
   text-align: left;
   cursor: pointer;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 88%, white 4%);
-  background: color-mix(in srgb, var(--mud-palette-background) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 76%, var(--mud-palette-text-secondary) 12%);
+  background: color-mix(in srgb, var(--mud-palette-background) 58%, var(--mud-palette-surface));
+}
+
+.wb-mode-card:hover {
+  border-color: color-mix(in srgb, var(--mud-palette-primary) 46%, var(--mud-palette-lines-default));
+  background: color-mix(in srgb, var(--mud-palette-primary) 7%, var(--mud-palette-surface));
 }
 
 .wb-mode-card.is-active {
-  border-color: color-mix(in srgb, var(--mud-palette-primary) 32%, var(--mud-palette-lines-default));
-  background: color-mix(in srgb, var(--mud-palette-primary) 9%, transparent);
+  border-color: color-mix(in srgb, var(--mud-palette-primary) 72%, var(--mud-palette-lines-default));
+  background: color-mix(in srgb, var(--mud-palette-primary) 16%, var(--mud-palette-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 28%, transparent);
 }
 
 .wb-mode-title {
@@ -456,8 +502,10 @@ select,
 .wb-subpanel {
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 88%, white 4%);
-  background: color-mix(in srgb, var(--mud-palette-background) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 78%, var(--mud-palette-text-secondary) 10%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-background) 52%, var(--mud-palette-surface)), color-mix(in srgb, var(--mud-palette-background) 38%, var(--mud-palette-surface)));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
 }
 
 .wb-listener-summary-grid {
@@ -476,6 +524,82 @@ select,
   min-height: 72px;
 }
 
+.wb-forge-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wb-forge-status-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 74%, var(--mud-palette-text-secondary) 12%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mud-palette-background) 54%, var(--mud-palette-surface));
+}
+
+.wb-top-status-popover {
+  position: fixed;
+  top: 58px;
+  right: 12px;
+  z-index: 1300;
+  width: min(920px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-primary) 34%, var(--mud-palette-lines-default));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mud-palette-surface) 98%, black 2%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+
+.wb-top-log-popover {
+  position: fixed;
+  top: 58px;
+  right: 12px;
+  z-index: 1301;
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100vh - 76px);
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-info) 34%, var(--mud-palette-lines-default));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mud-palette-surface) 96%, black 2%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+
+.wb-forge-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.wb-forge-status-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 82%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.wb-forge-status-row span {
+  color: var(--mud-palette-text-secondary);
+}
+
+.wb-forge-status-row strong {
+  min-width: 0;
+  color: var(--mud-palette-text-primary);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  .wb-forge-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .wb-subpanel-head {
   display: flex;
   align-items: flex-start;
@@ -486,8 +610,8 @@ select,
 .wb-stat-strip {
   padding: 8px 10px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--mud-palette-background) 42%, transparent);
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 90%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-background) 58%, var(--mud-palette-surface));
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 78%, var(--mud-palette-text-secondary) 10%);
 }
 
 .wb-master-detail {
@@ -502,9 +626,9 @@ select,
 .wb-detail-pane,
 .wb-call-list,
 .wb-frame-detail {
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 88%, white 3%);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 76%, var(--mud-palette-text-secondary) 10%);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--mud-palette-background) 34%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-background) 50%, var(--mud-palette-surface));
   min-width: 0;
 }
 
@@ -533,24 +657,27 @@ select,
 .wb-call-row {
   width: 100%;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 82%, transparent);
   background: transparent;
   color: inherit;
   text-align: left;
   padding: 11px 12px;
   cursor: pointer;
   min-width: 0;
+  transition: background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .wb-master-row:hover,
 .wb-call-row:hover {
-  background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-primary) 13%, var(--mud-palette-surface));
 }
 
 .wb-master-row.is-selected,
 .wb-call-row.is-selected {
-  background: color-mix(in srgb, var(--mud-palette-primary) 15%, transparent);
-  box-shadow: inset 3px 0 0 var(--mud-palette-primary);
+  background: color-mix(in srgb, var(--mud-palette-primary) 23%, var(--mud-palette-surface));
+  box-shadow:
+    inset 4px 0 0 var(--mud-palette-primary),
+    inset 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 26%, transparent);
 }
 
 .wb-master-row-top,
@@ -584,6 +711,14 @@ select,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.wb-message-list .wb-call-row-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .wb-call-row-count {
@@ -650,9 +785,13 @@ select,
 
 .wb-message-split {
   display: grid;
-  grid-template-columns: minmax(160px, 0.55fr) minmax(0, 1.45fr);
+  grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.25fr);
   gap: 10px;
   min-height: 260px;
+}
+
+.wb-message-split .wb-message-split {
+  grid-template-columns: minmax(170px, 0.45fr) minmax(0, 1.55fr);
 }
 
 .wb-message-list,
@@ -689,16 +828,17 @@ select,
   max-height: 260px;
   box-sizing: border-box;
   margin: 0;
+  background: color-mix(in srgb, var(--mud-palette-background) 72%, black 10%);
 }
 
 .wb-json-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 88%, white 4%);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 78%, var(--mud-palette-text-secondary) 10%);
   border-radius: 10px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--mud-palette-surface) 90%, white 2%);
+  background: color-mix(in srgb, var(--mud-palette-surface) 96%, black 2%);
   font-size: 0.72rem;
 }
 
@@ -718,9 +858,9 @@ select,
   gap: 8px;
   width: fit-content;
   max-width: 100%;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 84%, white 2%);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 74%, var(--mud-palette-text-secondary) 10%);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--mud-palette-background) 24%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-background) 50%, var(--mud-palette-surface));
   color: var(--mud-palette-text-secondary);
   padding: 4px 10px;
   font-size: 0.68rem;
@@ -729,7 +869,7 @@ select,
 }
 
 .wb-json-toggle:hover {
-  background: color-mix(in srgb, var(--mud-palette-background) 34%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-primary) 10%, var(--mud-palette-surface));
 }
 
 .wb-json-toggle-icon {
@@ -794,7 +934,7 @@ select,
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--mud-palette-text-secondary);
-  background: color-mix(in srgb, var(--mud-palette-background) 22%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-background) 44%, var(--mud-palette-surface));
   overflow-wrap: anywhere;
 }
 
@@ -811,7 +951,7 @@ select,
 }
 
 .wb-json-array-item {
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 84%, white 2%);
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 74%, var(--mud-palette-text-secondary) 10%);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -844,20 +984,19 @@ select,
 .wb-scenario-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .wb-scenario-step {
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 88%, white 3%);
-  background: color-mix(in srgb, var(--mud-palette-background) 28%, transparent);
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 76%, var(--mud-palette-text-secondary) 10%);
+  background: color-mix(in srgb, var(--mud-palette-background) 42%, var(--mud-palette-surface));
 }
 
 .wb-scenario-group {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--mud-palette-info) 8%, transparent), transparent 56%),
-    color-mix(in srgb, var(--mud-palette-background) 28%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mud-palette-background) 18%, transparent);
 }
 
 .wb-scenario-step-top {
@@ -887,8 +1026,8 @@ select,
 .wb-scenario-step-meta,
 .wb-trigger-meta-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px 18px;
 }
 
 .wb-scenario-step-meta {
@@ -897,7 +1036,7 @@ select,
 
 .wb-scenario-label {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -907,7 +1046,7 @@ select,
 
 .wb-scenario-value {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   line-height: 1.4;
   color: var(--mud-palette-text-primary);
   overflow-wrap: anywhere;
@@ -921,8 +1060,22 @@ select,
 .wb-scenario-step-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.wb-mode-note {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 84%, transparent);
+  background: color-mix(in srgb, var(--mud-palette-background) 20%, transparent);
+  color: var(--mud-palette-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wb-trigger-card {
@@ -1057,7 +1210,7 @@ select,
 }
 
 .wb-editor-drawer {
-  width: min(760px, 100vw - 32px);
+  width: min(840px, 100vw - 32px);
   height: calc(100vh - 30px);
   max-height: calc(100vh - 30px);
   overflow: auto;
@@ -1107,7 +1260,7 @@ select,
              scrollbar-color: var(--mud-palette-lines-default) transparent; }
 .wb-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .wb-scroll::-webkit-scrollbar-thumb {
-  background: var(--mud-palette-lines-default);
+  background: color-mix(in srgb, var(--mud-palette-lines-default) 72%, var(--mud-palette-text-secondary) 16%);
   border-radius: 4px;
 }
 .wb-scroll::-webkit-scrollbar-track { background: transparent; }

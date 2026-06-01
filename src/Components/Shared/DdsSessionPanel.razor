@@ -1,15 +1,18 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @using ASAP.Models.Dds
 @using ASAP.Models.Session
 @using ASAP.Models.Ui
 @using ASAP.Services
 @using ASAP.Dds
+@using LogLevel = ASAP.Models.Ui.LogLevel
 @inject IDdsSessionService DdsSessions
 @inject DdsStateService DdsState
 @inject DdsTriggerService Triggers
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject WorkbenchStateService State
 @implements IDisposable
 
 @if (Session == null)
@@ -18,11 +21,26 @@
 }
 else
 {
+    EnsureDdsCache();
+    var activeSubscriptions = ActiveSubscriptions.ToList();
+    var outbound = RecentOutbound;
+    var outboundByTopic = outbound
+        .GroupBy(x => x.TopicName, StringComparer.Ordinal)
+        .OrderBy(group => group.Key, StringComparer.Ordinal)
+        .Select(group => new DdsOutboundTopicVm(group.Key, group.ToList()))
+        .ToList();
+    var outboundTopics = outboundByTopic.Select(x => x.TopicName).ToList();
+    var selectedOutboundTopic = ResolveSelectedOutboundTopic(outboundTopics, _selectedOutboundTopicName);
+    var selectedOutboundMessages = selectedOutboundTopic == null
+        ? []
+        : outbound.Where(x => string.Equals(x.TopicName, selectedOutboundTopic, StringComparison.Ordinal)).ToList();
+    var selectedOutboundMessage = ResolveSelectedOutboundMessage(selectedOutboundMessages, _selectedOutboundKey);
+
     <div class="wb-panel wb-panel--major wb-panel--contain pa-3 mb-4">
         <div class="d-flex align-center flex-wrap mb-2" style="gap:8px;">
             <MudIcon Icon="@Icons.Material.Filled.Cable" Size="Size.Small" Color="Color.Success" />
             <div>
-                <div class="wb-panel-kicker">DDS 세션</div>
+                <div class="wb-panel-kicker">DDS</div>
                 <div class="wb-panel-heading">@Session.Name · domain @Session.Transport.DomainId</div>
             </div>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@Session.Topics.Count 토픽</MudChip>
@@ -36,8 +54,8 @@ else
         <div class="wb-subpanel mb-3 pa-3">
             <div class="d-flex align-center flex-wrap" style="gap:8px;">
                 <div>
-                    <div class="wb-panel-kicker">작업 요약</div>
-                    <div class="wb-panel-heading">핵심 연결 정보와 바로 할 일을 먼저 보여줍니다</div>
+                    <div class="wb-panel-kicker">요약</div>
+                    <div class="wb-panel-heading" title="핵심 연결 정보와 바로 할 일을 먼저 보여줍니다">상태</div>
                 </div>
                 <MudSpacer />
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">세션 @Session.SessionId[..8]</MudChip>
@@ -63,8 +81,8 @@ else
                 </div>
             </div>
 
-            <div class="wb-inline-note mt-3">
-                이 화면에서는 원본 XML 본문보다 수신 토픽 선택, 수동 발행, 자동 실행 단계 편집이 중심이에요. 원본 파일명과 네트워크 설정만 남기고 미리보기는 뺐어요.
+            <div class="wb-inline-note mt-3" title="원본 XML 본문보다 수신 토픽 선택, 수동 발행, 자동 실행 단계 편집을 중심으로 구성합니다.">
+                XML: @(Session.TypesXmlFileName ?? "types") · @(Session.ConfigXmlFileName ?? "config")
             </div>
         </div>
 
@@ -76,9 +94,9 @@ else
                         <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Info" />
                         <div>
                             <div class="wb-panel-kicker">수신</div>
-                            <div class="wb-panel-heading">수신 토픽과 샘플</div>
+                            <div class="wb-panel-heading" title="수신 토픽과 샘플을 함께 봅니다">샘플</div>
                         </div>
-                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text" Class="ma-0">@ActiveSubscriptions.Count 활성</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text" Class="ma-0">@activeSubscriptions.Count 활성</MudChip>
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@SelectedReceivableTopicCount 선택</MudChip>
                         <MudSpacer />
                     </div>
@@ -92,8 +110,8 @@ else
                         <div class="wb-subpanel mb-3 pa-3">
                             <div class="d-flex align-center mb-2" style="gap:8px;">
                                 <div>
-                                    <div class="wb-panel-kicker">수신 토픽 선택</div>
-                                    <div class="wb-panel-heading">팝업에서 수신 토픽을 선택하고 한 번에 시작/중지</div>
+                                    <div class="wb-panel-kicker">선택</div>
+                                    <div class="wb-panel-heading" title="팝업에서 수신 토픽을 선택하고 한 번에 시작/중지합니다">토픽</div>
                                 </div>
                                 <MudSpacer />
                                 <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
@@ -107,12 +125,16 @@ else
                                            StartIcon="@Icons.Material.Filled.Stop"
                                            Disabled="@(SelectedActiveSubscriptionCount == 0)"
                                            OnClick="StopSelectedSubscriptions">선택 중지</MudButton>
+                                <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.DeleteSweep"
+                                           Disabled="@(activeSubscriptions.Count == 0)"
+                                           OnClick="ClearReceiveHistory">초기화</MudButton>
                             </div>
 
                             <div class="d-flex flex-wrap" style="gap:8px;">
                                 @if (SelectedReceivableTopicCount == 0)
                                 {
-                                    <div class="wb-inline-note">선택된 수신 토픽이 없어요. "수신 토픽 선택" 버튼으로 먼저 골라 주세요.</div>
+                                    <div class="wb-inline-note" title="수신 토픽 선택 버튼으로 먼저 골라 주세요.">선택 없음</div>
                                 }
                                 else
                                 {
@@ -131,7 +153,7 @@ else
                             </div>
                         </div>
 
-                        @if (ActiveSubscriptions.Count == 0)
+                        @if (activeSubscriptions.Count == 0)
                         {
                             <div class="wb-empty"><div>수신 중인 토픽이 없습니다</div></div>
                         }
@@ -139,11 +161,10 @@ else
                         {
                             var selectedSubscription = SelectedSubscription;
                             var selectedTopic = selectedSubscription == null ? null : FindTopic(selectedSubscription.TopicName);
-                            var samples = selectedSubscription == null ? [] : DdsState.SnapshotSamples(selectedSubscription.SubscriptionId, 50);
+                            var samples = selectedSubscription == null ? [] : GetCachedSamples(selectedSubscription.SubscriptionId);
                             <div class="wb-message-split">
                                 <div class="wb-scroll wb-message-list">
-                                    @foreach (var subscription in ActiveSubscriptions)
-                                    {
+                                    <Virtualize TItem="DdsSubscriptionInfo" Items="@activeSubscriptions" Context="subscription" ItemSize="62">
                                         <button type="button"
                                                 class="wb-call-row @(selectedSubscription?.SubscriptionId == subscription.SubscriptionId ? "is-selected" : null)"
                                                 @onclick="@(() => SelectSubscription(subscription.SubscriptionId))">
@@ -156,7 +177,7 @@ else
                                                 <span>@subscription.StartedAt.ToLocalTime().ToString("HH:mm:ss")</span>
                                             </div>
                                         </button>
-                                    }
+                                    </Virtualize>
                                 </div>
                                 <div class="wb-message-content">
                                     @if (selectedSubscription == null)
@@ -174,8 +195,7 @@ else
                                         var sel = samples.FirstOrDefault(x => x.SequenceNumber == _selectedSampleSeq) ?? samples.First();
                                         <div class="wb-message-split">
                                             <div class="wb-scroll wb-message-list">
-                                                @foreach (var sample in samples)
-                                                {
+                                                <Virtualize TItem="DdsSampleEntry" Items="@samples" Context="sample" ItemSize="38">
                                                     <button type="button"
                                                             class="wb-call-row wb-message-row @(sel.SequenceNumber == sample.SequenceNumber ? "is-selected" : null)"
                                                             @onclick="@(() => _selectedSampleSeq = sample.SequenceNumber)">
@@ -184,10 +204,10 @@ else
                                                             <span>#@sample.SequenceNumber</span>
                                                         </div>
                                                     </button>
-                                                }
+                                                </Virtualize>
                                             </div>
                                             <div class="wb-message-content">
-                                                <JsonDataView Json="@sel.JsonData" />
+                                             <JsonDataView Json="@sel.JsonData" AutoExpandDepth="3" />
                                             </div>
                                         </div>
                                     }
@@ -204,46 +224,85 @@ else
                         <MudIcon Icon="@Icons.Material.Filled.NorthEast" Size="Size.Small" Color="Color.Primary" />
                         <div>
                             <div class="wb-panel-kicker">송신</div>
-                            <div class="wb-panel-heading">최근 DDS 송신 결과</div>
+                            <div class="wb-panel-heading" title="최근 DDS 송신 결과">결과</div>
                         </div>
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@RecentOutbound.Count</MudChip>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@outbound.Count 메시지</MudChip>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                   Disabled="@(outbound.Count == 0)"
+                                   OnClick="ClearOutboundHistory"
+                                   StartIcon="@Icons.Material.Filled.DeleteSweep">초기화</MudButton>
                     </div>
 
-                    @if (RecentOutbound.Count == 0)
+                    @if (outbound.Count == 0)
                     {
                         <div class="wb-empty"><div>아직 송신된 DDS 메시지 없음</div></div>
                     }
                     else
                     {
-                        <div class="wb-scroll" style="max-height:420px;">
-                            @foreach (var o in RecentOutbound)
-                            {
-                                <div class="wb-scenario-step mb-2">
-                                    <div class="wb-scenario-step-top">
-                                        <div class="wb-scenario-step-title">@o.TopicName</div>
-                                        <MudChip T="string" Size="Size.Small"
-                                                 Color="@(o.Success ? Color.Success : Color.Error)"
-                                                 Variant="Variant.Text" Class="ma-0">@(o.Success ? "OK" : "실패")</MudChip>
-                                    </div>
-                                    <div class="wb-scenario-step-meta">
-                                        <div>
-                                            <span class="wb-scenario-label">시각</span>
-                                            <span class="wb-scenario-value">@o.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <div class="wb-message-split">
+                            <div class="wb-scroll wb-message-list">
+                                <Virtualize TItem="DdsOutboundTopicVm" Items="@outboundByTopic" Context="topicGroup" ItemSize="62">
+                                    @{
+                                        var topicName = topicGroup.TopicName;
+                                        var topicMessages = topicGroup.Messages;
+                                        var last = topicMessages.First();
+                                    }
+                                    <button type="button"
+                                            class="wb-call-row @(selectedOutboundTopic == topicName ? "is-selected" : null)"
+                                            @onclick="@(() => SelectOutboundTopic(topicName))"
+                                            title="@topicName">
+                                        <div class="wb-call-row-top">
+                                            <span class="wb-mono wb-call-row-title">@topicName</span>
+                                            <span class="wb-call-row-count">@topicMessages.Count 개 송신</span>
                                         </div>
-                                        <div>
-                                            <span class="wb-scenario-label">타입</span>
-                                            <span class="wb-scenario-value">@o.TypeName</span>
+                                        <div class="wb-call-row-meta">
+                                            <span>@last.TypeName</span>
+                                            <span>@last.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
                                         </div>
-                                        @if (!o.Success)
-                                        {
-                                            <div>
-                                                <span class="wb-scenario-label">오류</span>
-                                                <span class="wb-scenario-value">@o.Error</span>
-                                            </div>
-                                        }
+                                    </button>
+                                </Virtualize>
+                            </div>
+
+                            <div class="wb-message-content">
+                                @if (selectedOutboundMessage == null)
+                                {
+                                    <div class="wb-empty"><div>왼쪽에서 송신 토픽을 선택하세요</div></div>
+                                }
+                                else
+                                {
+                                    <div class="wb-inline-note mb-2">topic: @selectedOutboundMessage.TopicName · @selectedOutboundMessages.Count 개 송신</div>
+                                    <div class="wb-message-split">
+                                        <div class="wb-scroll wb-message-list">
+                                            <Virtualize TItem="DdsOutboundEntry" Items="@selectedOutboundMessages" Context="message" ItemSize="38">
+                                                @{
+                                                    var messageKey = OutboundKey(message);
+                                                }
+                                                <button type="button"
+                                                        class="wb-call-row wb-message-row @(OutboundKey(selectedOutboundMessage) == messageKey ? "is-selected" : null)"
+                                                        @onclick="@(() => _selectedOutboundKey = messageKey)">
+                                                    <div class="wb-message-row-main">
+                                                        <span class="wb-mono">@message.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                                        <span>@(message.Success ? "OK" : "실패")</span>
+                                                    </div>
+                                                </button>
+                                            </Virtualize>
+                                        </div>
+                                        <div class="wb-message-content">
+                                            <div class="wb-inline-note mb-2">@($"Outbound · {selectedOutboundMessage.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {selectedOutboundMessage.TypeName}")</div>
+                                            @if (selectedOutboundMessage.Success)
+                                            {
+                                                <JsonDataView Json="@selectedOutboundMessage.JsonPayload" AutoExpandDepth="3" />
+                                            }
+                                            else
+                                            {
+                                                <div class="wb-inline-note mb-2">@selectedOutboundMessage.Error</div>
+                                                <JsonDataView Json="@selectedOutboundMessage.JsonPayload" AutoExpandDepth="3" />
+                                            }
+                                        </div>
                                     </div>
-                                </div>
-                            }
+                                }
+                            </div>
                         </div>
                     }
                 </div>
@@ -254,8 +313,8 @@ else
                     <div class="d-flex align-center mb-2" style="gap:8px;">
                         <MudIcon Icon="@Icons.Material.Filled.AutoMode" Size="Size.Small" Color="Color.Primary" />
                         <div>
-                            <div class="wb-panel-kicker">DDS 자동화</div>
-                            <div class="wb-panel-heading">시나리오 안에서 수동 단계와 자동 단계를 함께 운용</div>
+                            <div class="wb-panel-kicker">DDS</div>
+                            <div class="wb-panel-heading" title="시나리오 안에서 수동 단계와 자동 단계를 함께 운용합니다">자동화</div>
                         </div>
                     </div>
 
@@ -263,8 +322,8 @@ else
                         <div class="d-flex align-center mb-2" style="gap:8px;">
                             <MudIcon Icon="@Icons.Material.Filled.PlaylistPlay" Size="Size.Small" Color="Color.Secondary" />
                             <div>
-                                <div class="wb-panel-kicker">시나리오 단계</div>
-                                <div class="wb-panel-heading">시나리오를 만들고 그 안에서 단계 순서와 자동화를 구성</div>
+                                <div class="wb-panel-kicker">단계</div>
+                                <div class="wb-panel-heading" title="시나리오를 만들고 그 안에서 단계 순서와 자동화를 구성합니다">시나리오</div>
                             </div>
                             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@Session.ScenarioSteps.Count 단계</MudChip>
                             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">시나리오 @BuildScenarioGroups().Count</MudChip>
@@ -275,7 +334,7 @@ else
                                        Disabled="@(DefaultPublishTopic == null)">시나리오 추가</MudButton>
                         </div>
 
-                        <div class="wb-inline-note mb-2">시나리오 추가를 누르면 첫 단계가 포함된 새 시나리오를 만들어요. 각 시나리오 안에서 단계 추가, 수동 전체 실행, 자동 단계 시작, 전체 시작을 따로 제어해 보세요.</div>
+                        <div class="wb-inline-note mb-2" title="시나리오 추가를 누르면 첫 단계가 포함된 새 시나리오를 만들고, 각 시나리오 안에서 실행 범위를 제어합니다.">시나리오 단위로 실행합니다</div>
 
                         <div class="d-flex align-center mb-2" style="gap:8px;">
                             <MudButton Variant="Variant.Outlined" Size="Size.Small"
@@ -311,27 +370,29 @@ else
                                                 <MudChip T="string" Size="Size.Small" Color="@(IsScenarioAutomationRunning(group.Name) ? Color.Success : Color.Default)" Variant="Variant.Text" Class="ma-0">@(IsScenarioAutomationRunning(group.Name) ? "자동화 동작 중" : "자동화 대기")</MudChip>
                                             </div>
                                         </div>
-                                        <div class="wb-inline-note mt-2">수동 단계 전체 실행은 이 시나리오의 수동 단계만 순서대로 보내요. 자동 단계 시작은 주기, 다발, 수신 반응 단계를 이 시나리오 범위에서 계속 유지해요.</div>
                                         <div class="wb-scenario-step-actions mt-2">
                                             <MudButton Variant="Variant.Text" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.Add"
-                                                       OnClick="@(() => AddScenarioStep(group.Name))">단계 추가</MudButton>
+                                                       OnClick="@(() => AddScenarioStep(group.Name))">단계</MudButton>
                                             <MudButton Variant="Variant.Outlined" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.PlayArrow"
                                                        OnClick="@(() => RunScenario(group.Name))"
-                                                       Disabled="@(ManualScenarioStepCountFor(group.Name) == 0 || _runningScenario)">수동 단계 전체 실행</MudButton>
+                                                       title="수동 단계를 순서대로 실행합니다"
+                                                       Disabled="@(ManualScenarioStepCountFor(group.Name) == 0 || _runningScenario)">수동</MudButton>
                                             <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.AutoMode"
                                                        OnClick="@(() => StartAutomation(group.Name))"
-                                                       Disabled="@(AutomaticScenarioStepCountFor(group.Name) == 0 || _runningScenario || IsScenarioAutomationRunning(group.Name))">자동 단계 시작</MudButton>
+                                                       title="주기, 다발, 수신 반응 단계를 등록합니다"
+                                                       Disabled="@(AutomaticScenarioStepCountFor(group.Name) == 0 || _runningScenario || IsScenarioAutomationRunning(group.Name))">자동</MudButton>
                                             <MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.PlayCircle"
                                                        OnClick="@(() => StartScenarioWorkflow(group.Name))"
-                                                       Disabled="@((ManualScenarioStepCountFor(group.Name) == 0 && AutomaticScenarioStepCountFor(group.Name) == 0) || _runningScenario || IsScenarioAutomationRunning(group.Name))">전체 시작</MudButton>
+                                                       title="수동 단계를 실행한 뒤 자동 단계를 시작합니다"
+                                                       Disabled="@((ManualScenarioStepCountFor(group.Name) == 0 && AutomaticScenarioStepCountFor(group.Name) == 0) || _runningScenario || IsScenarioAutomationRunning(group.Name))">전체</MudButton>
                                             <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.Stop"
                                                        OnClick="@(() => StopAutomation(group.Name))"
-                                                       Disabled="@(!IsScenarioAutomationRunning(group.Name))">자동화 중지</MudButton>
+                                                       Disabled="@(!IsScenarioAutomationRunning(group.Name))">중지</MudButton>
                                             <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
                                                        StartIcon="@Icons.Material.Filled.Cancel"
                                                        OnClick="StopScenario"
@@ -363,26 +424,22 @@ else
                                                             <span class="wb-scenario-label">대상</span>
                                                             <span class="wb-scenario-value">@ScenarioStepDestinationLabel(step)</span>
                                                         </div>
-                                                        <div>
-                                                            <span class="wb-scenario-label">Payload</span>
-                                                            <span class="wb-scenario-value wb-preline">@ScenarioStepPayloadPreview(step)</span>
-                                                        </div>
                                                     </div>
                                                     <div class="wb-scenario-step-actions">
                                                         <MudButton Variant="Variant.Text" Size="Size.Small"
                                                                    StartIcon="@Icons.Material.Filled.KeyboardArrowUp"
                                                                    Disabled="@(i == 0)"
-                                                                   OnClick="@(() => MoveScenarioStep(step, -1))">위로</MudButton>
+                                                                   OnClick="@(() => MoveScenarioStep(step, -1))">위</MudButton>
                                                         <MudButton Variant="Variant.Text" Size="Size.Small"
                                                                    StartIcon="@Icons.Material.Filled.KeyboardArrowDown"
                                                                    Disabled="@isLastStep"
-                                                                   OnClick="@(() => MoveScenarioStep(step, 1))">아래로</MudButton>
+                                                                   OnClick="@(() => MoveScenarioStep(step, 1))">아래</MudButton>
                                                         <MudButton Variant="Variant.Outlined" Size="Size.Small"
                                                                    StartIcon="@Icons.Material.Filled.Edit"
                                                                    OnClick="@(() => EditScenarioStep(step))">편집</MudButton>
                                                         <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Success"
                                                                    StartIcon="@Icons.Material.Filled.PlayArrow"
-                                                                   OnClick="@(() => FireScenarioStep(step))">1회 실행</MudButton>
+                                                                   OnClick="@(() => FireScenarioStep(step))">1회</MudButton>
                                                         <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error"
                                                                    StartIcon="@Icons.Material.Filled.DeleteOutline"
                                                                    OnClick="@(() => RemoveScenarioStep(step))">삭제</MudButton>
@@ -398,44 +455,6 @@ else
                 </div>
             </MudItem>
 
-            <MudItem xs="12">
-                <div class="wb-panel wb-panel--major wb-panel--contain pa-3 mb-4">
-                    <div class="d-flex align-center mb-2" style="gap:8px;">
-                        <MudIcon Icon="@Icons.Material.Filled.Feed" Size="Size.Small" Color="Color.Info" />
-                        <div>
-                            <div class="wb-panel-kicker">세션 / 시스템 로그</div>
-                            <div class="wb-panel-heading">세션 범위 영속 로그</div>
-                        </div>
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@Session.LogEntries.Count</MudChip>
-                        <MudSpacer />
-                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
-                                   StartIcon="@Icons.Material.Filled.CleaningServices"
-                                   OnClick="ClearLogs">로그 비우기</MudButton>
-                    </div>
-
-                    @if (Session.LogEntries.Count == 0)
-                    {
-                        <div class="wb-empty"><div>로그 없음</div></div>
-                    }
-                    else
-                    {
-                        <div class="wb-scroll" style="max-height:260px;">
-                            @foreach (var entry in Session.LogEntries)
-                            {
-                                <div class="wb-call-row wb-message-row mb-1">
-                                    <div class="wb-message-row-main">
-                                        <span class="wb-mono">@entry.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</span>
-                                        <MudChip T="string" Size="Size.Small"
-                                                 Color="@LogColor(entry.Level)" Variant="Variant.Text" Class="ma-0">@entry.Level</MudChip>
-                                        <span class="wb-inline-note">@entry.Scope</span>
-                                    </div>
-                                    <div style="font-size:.8rem;">@entry.Message</div>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </MudItem>
         </MudGrid>
 
         @if (_editingScenarioStep != null)
@@ -487,7 +506,7 @@ else
                             </MudSelect>
                         </MudItem>
                         <MudItem xs="12" sm="6">
-                            <div class="wb-inline-note" style="margin-top:4px;">
+                            <div class="wb-mode-note" title="@ScenarioStepModeGuidance(editor.Mode)">
                                 @ScenarioStepModeGuidance(editor.Mode)
                             </div>
                         </MudItem>
@@ -550,7 +569,7 @@ else
                         <MudItem xs="12">
                             <div class="d-flex flex-wrap align-center" style="gap:8px;">
                                 <div class="d-flex align-center" style="gap:6px;min-width:0;">
-                                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);margin:0;">Payload 편집</MudText>
+                                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);margin:0;">Payload</MudText>
                                     <MudTooltip Text="DDS 단계 payload는 필드 입력이나 JSON 원문으로 편집할 수 있어요.">
                                         <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="cursor:help;color:var(--mud-palette-text-secondary);" />
                                     </MudTooltip>
@@ -609,8 +628,8 @@ else
                     <div class="d-flex align-center mb-3" style="gap:8px;">
                         <MudIcon Icon="@Icons.Material.Filled.Checklist" Size="Size.Small" Color="Color.Info" />
                         <div>
-                            <div class="wb-panel-kicker">수신 토픽 선택</div>
-                            <div class="wb-panel-heading">수신할 DDS 토픽을 체크하세요</div>
+                            <div class="wb-panel-kicker">선택</div>
+                            <div class="wb-panel-heading" title="수신할 DDS 토픽을 체크하세요">토픽</div>
                         </div>
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@SelectedReceivableTopicCount 선택</MudChip>
                         <MudSpacer />
@@ -664,6 +683,8 @@ else
     private bool _showReceiveTopicPicker;
     private string? _selectedSubscriptionId;
     private long _selectedSampleSeq = 0;
+    private string? _selectedOutboundTopicName;
+    private string? _selectedOutboundKey;
 
     private string _scenarioDraftTopicName = "";
     private DdsTopicConfig? _scenarioDraftTopic;
@@ -679,7 +700,17 @@ else
     private readonly HashSet<string> _activeAutomationScenarios = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _scenarioCts;
     private string _automationSignature = string.Empty;
+    private int _renderQueued;
+    private long _lastRenderTicks;
     private const int MaxLogEntries = 500;
+    private string? _cachedDdsSessionId;
+    private long _cachedDdsSubscriptionVersion = -1;
+    private long _cachedDdsOutboundVersion = -1;
+    private string? _cachedSamplesSubscriptionId;
+    private long _cachedSamplesVersion = -1;
+    private List<DdsSubscriptionInfo> _cachedActiveSubscriptions = [];
+    private List<DdsOutboundEntry> _cachedRecentOutbound = [];
+    private List<DdsSampleEntry> _cachedSamples = [];
 
     private IReadOnlyList<DdsTopicConfig> ReceivableTopics
         => Session == null
@@ -687,13 +718,18 @@ else
             : Session.Topics.Where(t => t.Direction != DdsTopicDirection.Publish).ToList();
 
     private IReadOnlyList<DdsSubscriptionInfo> ActiveSubscriptions
-        => Session == null ? [] : DdsState.SnapshotSubscriptions(Session.SessionId);
+    {
+        get
+        {
+            EnsureDdsCache();
+            return _cachedActiveSubscriptions;
+        }
+    }
 
     private DdsSubscriptionInfo? SelectedSubscription
         => Session == null || string.IsNullOrWhiteSpace(_selectedSubscriptionId)
             ? null
-            : DdsState.SnapshotSubscriptions(Session.SessionId)
-                .FirstOrDefault(s => s.SubscriptionId == _selectedSubscriptionId);
+            : ActiveSubscriptions.FirstOrDefault(s => s.SubscriptionId == _selectedSubscriptionId);
 
     private int SelectedReceivableTopicCount
         => ReceivableTopics.Count(topic => _selectedSubscriptionTopics.Contains(topic.TopicName));
@@ -727,7 +763,13 @@ else
         => _scenarioDraftTopic != null && _scenarioDraftTopic.Direction != DdsTopicDirection.Subscribe;
 
     private IReadOnlyList<DdsOutboundEntry> RecentOutbound
-        => Session == null ? [] : DdsState.SnapshotOutbound(Session.SessionId, 10);
+    {
+        get
+        {
+            EnsureDdsCache();
+            return _cachedRecentOutbound;
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -735,17 +777,75 @@ else
         DdsState.SampleReceived += OnSampleReceived;
     }
 
+    private void EnsureDdsCache()
+    {
+        if (Session == null)
+        {
+            ResetDdsCache();
+            return;
+        }
+
+        if (!string.Equals(_cachedDdsSessionId, Session.SessionId, StringComparison.Ordinal))
+        {
+            ResetDdsCache();
+            _cachedDdsSessionId = Session.SessionId;
+        }
+
+        var subscriptionVersion = DdsState.SubscriptionVersion;
+        if (_cachedDdsSubscriptionVersion != subscriptionVersion)
+        {
+            _cachedActiveSubscriptions = DdsState.SnapshotSubscriptions(Session.SessionId).ToList();
+            _cachedDdsSubscriptionVersion = subscriptionVersion;
+        }
+
+        var outboundVersion = DdsState.OutboundVersion(Session.SessionId);
+        if (_cachedDdsOutboundVersion != outboundVersion)
+        {
+            _cachedRecentOutbound = DdsState.SnapshotOutbound(Session.SessionId).ToList();
+            _cachedDdsOutboundVersion = outboundVersion;
+        }
+    }
+
+    private void ResetDdsCache()
+    {
+        _cachedDdsSessionId = null;
+        _cachedDdsSubscriptionVersion = -1;
+        _cachedDdsOutboundVersion = -1;
+        _cachedSamplesSubscriptionId = null;
+        _cachedSamplesVersion = -1;
+        _cachedActiveSubscriptions = [];
+        _cachedRecentOutbound = [];
+        _cachedSamples = [];
+    }
+
+    private List<DdsSampleEntry> GetCachedSamples(string subscriptionId)
+    {
+        var version = DdsState.SampleVersion(subscriptionId);
+        if (!string.Equals(_cachedSamplesSubscriptionId, subscriptionId, StringComparison.Ordinal)
+            || _cachedSamplesVersion != version)
+        {
+            _cachedSamplesSubscriptionId = subscriptionId;
+            _cachedSamplesVersion = version;
+            _cachedSamples = DdsState.SnapshotSamples(subscriptionId).ToList();
+        }
+
+        return _cachedSamples;
+    }
+
     protected override void OnParametersSet()
     {
         if (Session == null) return;
+
+        RehydrateAutomationScenariosFromTriggers();
+        EnsureDdsCache();
 
         foreach (var activeSubscription in ActiveSubscriptions)
         {
             _selectedSubscriptionTopics.Add(activeSubscription.TopicName);
         }
 
-        if (SelectedSubscription == null)
-            _selectedSubscriptionId = ActiveSubscriptions.FirstOrDefault()?.SubscriptionId;
+        if (_selectedSubscriptionId is not null && SelectedSubscription == null)
+            _selectedSubscriptionId = null;
 
         if (_scenarioDraftTopic == null && Session.Topics.Count > 0)
         {
@@ -1107,26 +1207,29 @@ else
 
         if (topicsToStart.Count == 0)
         {
-            Snackbar.Add("수신 시작할 토픽이 없어요.", Severity.Info);
+            State.AddLog("DDS 수신 시작할 토픽 없음", LogLevel.Info);
             return;
         }
 
         try
         {
+            DdsSubscriptionInfo? firstStarted = null;
             foreach (var topic in topicsToStart)
             {
                 var info = DdsState.StartSubscription(
                     Session.SessionId, topic.TopicName, topic.TypeName, topic.QosProfileName);
-                _selectedSubscriptionId ??= info.SubscriptionId;
-                AppendLog("session", "INFO", $"수신 시작: {topic.TopicName}");
+                firstStarted ??= info;
             }
 
-            Snackbar.Add($"수신 시작: {topicsToStart.Count}개 토픽", Severity.Success);
+            if (topicsToStart.Count == 1 && firstStarted != null)
+                _selectedSubscriptionId = firstStarted.SubscriptionId;
+
+            State.AddLog($"DDS 수신 시작: {topicsToStart.Count}개 토픽", LogLevel.Info);
         }
         catch (Exception ex)
         {
             Snackbar.Add($"수신 시작 실패: {ex.Message}", Severity.Error);
-            AppendLog("system", "ERROR", $"수신 시작 실패: {ex.Message}");
+            AppendLog("system", "ERROR", $"DDS 수신 시작 실패: {ex.Message}");
         }
     }
 
@@ -1139,7 +1242,7 @@ else
 
         if (targets.Count == 0)
         {
-            Snackbar.Add("중지할 수신 토픽이 없어요.", Severity.Info);
+            State.AddLog("DDS 중지할 수신 토픽 없음", LogLevel.Info);
             return;
         }
 
@@ -1147,10 +1250,10 @@ else
             DdsState.StopSubscription(subscriptionId);
 
         if (_selectedSubscriptionId is not null && targets.Contains(_selectedSubscriptionId))
-            _selectedSubscriptionId = ActiveSubscriptions.FirstOrDefault(subscription => !targets.Contains(subscription.SubscriptionId))?.SubscriptionId;
+            _selectedSubscriptionId = null;
 
         _selectedSampleSeq = 0;
-        AppendLog("session", "INFO", $"수신 중지: {targets.Count}개 토픽");
+        State.AddLog($"DDS 수신 중지: {targets.Count}개 토픽", LogLevel.Info);
     }
 
     private void LoadScenarioDraftTemplate()
@@ -1245,8 +1348,7 @@ else
             _editingScenarioStep = null;
         Session.ScenarioSteps.Remove(removed);
         _scenarioStepSchemaFields.Remove(removed.Id);
-        Snackbar.Add("메시지 단계를 삭제했어요.", Severity.Info);
-        AppendLog("session", "INFO", $"메시지 단계 삭제: {NormalizeScenarioName(removed.Scenario)} · {removed.TopicName}");
+        State.AddLog($"DDS 단계 삭제: {NormalizeScenarioName(removed.Scenario)} · {removed.TopicName}", LogLevel.Info);
         SyncScenarioAutomationTriggers();
     }
 
@@ -1328,8 +1430,6 @@ else
             return;
         }
 
-        Snackbar.Add($"단계 발행 완료: {ScenarioStepDisplayName(step)}", Severity.Success);
-        AppendLog("session", "INFO", $"단계 1회 발행: {ScenarioStepDisplayName(step)}");
     }
 
     private IReadOnlyList<SchemaField> GetScenarioStepSchemaFields(DdsScenarioStep step)
@@ -1417,8 +1517,7 @@ else
         _activeAutomationScenarios.Add(scenarioName);
         _automationRunning = _activeAutomationScenarios.Count > 0;
         SyncScenarioAutomationTriggers();
-        Snackbar.Add($"DDS 자동화를 시작했어요: {scenarioName}", Severity.Success);
-        AppendLog("session", "INFO", $"자동화 시작: {scenarioName} · {stepCount} step");
+        State.AddLog($"DDS 자동화 시작: {scenarioName} · {stepCount} step", LogLevel.Info);
     }
 
     private void StopAutomation(string? scenario = null)
@@ -1433,12 +1532,9 @@ else
 
         _automationRunning = _activeAutomationScenarios.Count > 0;
         SyncScenarioAutomationTriggers();
-        Snackbar.Add(string.IsNullOrWhiteSpace(scenario)
-            ? "DDS 자동화를 멈췄어요."
-            : $"DDS 자동화를 멈췄어요: {NormalizeScenarioName(scenario)}", Severity.Info);
-        AppendLog("session", "INFO", string.IsNullOrWhiteSpace(scenario)
+        State.AddLog(string.IsNullOrWhiteSpace(scenario)
             ? "자동화 중지"
-            : $"자동화 중지: {NormalizeScenarioName(scenario)}");
+            : $"자동화 중지: {NormalizeScenarioName(scenario)}", LogLevel.Info);
     }
 
     private async Task StartScenarioWorkflow(string scenario)
@@ -1454,7 +1550,6 @@ else
         }
 
         StartAutomation(scenario);
-        AppendLog("session", "INFO", $"전체 시작 완료: {NormalizeScenarioName(scenario)}");
     }
 
     private string CreateDefaultScenarioPayloadJson(string typeName)
@@ -1494,7 +1589,7 @@ else
                 && step.Mode == DdsStepMode.Manual)
             .ToList();
 
-        AppendLog("session", "INFO", $"수동 실행 시작: {scenarioName} · {manualSteps.Count} step");
+        State.AddLog($"DDS 수동 실행 시작: {scenarioName} · {manualSteps.Count} step", LogLevel.Info);
 
         try
         {
@@ -1517,10 +1612,6 @@ else
                     {
                         AppendLog("system", "ERROR", $"{scenarioName} step {i + 1}/{manualSteps.Count} 실패: {result.Error}");
                     }
-                    else
-                    {
-                        AppendLog("session", "INFO", $"{scenarioName} step {i + 1}/{manualSteps.Count} repeat {repeat}/{Math.Max(1, step.RepeatCount)} 성공");
-                    }
                 }
 
                 var delayMs = Math.Max(0, step.DelayAfterMs);
@@ -1528,10 +1619,7 @@ else
                     await Task.Delay(delayMs, ct);
             }
 
-            if (showCompletionSnackbar)
-                Snackbar.Add($"DDS 수동 실행 완료: {scenarioName}", Severity.Success);
-
-            AppendLog("session", "INFO", $"수동 실행 완료: {scenarioName}");
+            State.AddLog($"DDS 수동 실행 완료: {scenarioName}", LogLevel.Info);
             return true;
         }
         catch (OperationCanceledException)
@@ -1570,8 +1658,7 @@ else
 
         var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
         await JS.InvokeVoidAsync("workbench.downloadText", $"dds-scenarios-{SanitizeFileName(Session.Name)}.json", json, "application/json");
-        Snackbar.Add($"DDS 시나리오 저장 완료: {Session.ScenarioSteps.Count} step", Severity.Success);
-        AppendLog("session", "INFO", $"시나리오 저장: {Session.ScenarioSteps.Count} step");
+        State.AddLog($"DDS 시나리오 저장: {Session.ScenarioSteps.Count} step", LogLevel.Info);
     }
 
     private async Task ImportScenarioJson(IBrowserFile? file)
@@ -1625,19 +1712,13 @@ else
             _activeAutomationScenarios.Clear();
             _automationRunning = false;
 
-            Snackbar.Add($"DDS 시나리오 불러오기 완료: {Session.ScenarioSteps.Count} step", Severity.Success);
-            AppendLog("session", "INFO", $"시나리오 불러오기: {Session.ScenarioSteps.Count} step");
+            State.AddLog($"DDS 시나리오 불러오기: {Session.ScenarioSteps.Count} step", LogLevel.Info);
         }
         catch (Exception ex)
         {
             Snackbar.Add($"DDS 시나리오 불러오기 실패: {ex.Message}", Severity.Error);
-            AppendLog("system", "ERROR", $"시나리오 불러오기 실패: {ex.Message}");
+            AppendLog("system", "ERROR", $"DDS 시나리오 불러오기 실패: {ex.Message}");
         }
-    }
-
-    private void ClearLogs()
-    {
-        Session?.LogEntries.Clear();
     }
 
     private string ComputeAutomationSignature()
@@ -1760,6 +1841,28 @@ else
     private bool IsScenarioAutomationRunning(string? scenario)
         => _activeAutomationScenarios.Contains(NormalizeScenarioName(scenario));
 
+    private void RehydrateAutomationScenariosFromTriggers()
+    {
+        if (Session == null || _activeAutomationScenarios.Count > 0)
+            return;
+
+        var activeScenarios = Triggers.Snapshot(Session.SessionId)
+            .Where(trigger => trigger.Enabled)
+            .Join(
+                Session.ScenarioSteps,
+                trigger => trigger.Id,
+                step => step.Id,
+                (_, step) => NormalizeScenarioName(step.Scenario))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (activeScenarios.Count == 0)
+            return;
+
+        foreach (var scenario in activeScenarios)
+            _activeAutomationScenarios.Add(scenario);
+        _automationRunning = true;
+    }
+
     private string CreateScenarioName()
     {
         var existing = BuildScenarioGroups().Select(group => group.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1815,8 +1918,6 @@ else
     private void OnSampleReceived(DdsSubscriptionInfo info, DdsSampleEntry sample)
     {
         if (Session == null || info.SessionId != Session.SessionId) return;
-        _selectedSubscriptionId ??= info.SubscriptionId;
-        AppendLog("session", "INFO", $"수신: {info.TopicName} #{sample.SequenceNumber}");
     }
 
     private DdsTopicConfig? FindTopic(string topicName)
@@ -1824,27 +1925,92 @@ else
         return Session?.Topics.FirstOrDefault(topic => topic.TopicName == topicName);
     }
 
+    private void SelectOutboundTopic(string topicName)
+    {
+        _selectedOutboundTopicName = topicName;
+        _selectedOutboundKey = null;
+    }
+
+    private void ClearReceiveHistory()
+    {
+        if (Session == null)
+            return;
+
+        DdsState.ClearSamples(Session.SessionId);
+        _selectedSampleSeq = 0;
+        _cachedSamplesSubscriptionId = null;
+        _cachedSamplesVersion = -1;
+        _cachedSamples = [];
+        State.AddLog($"DDS 수신 기록 초기화: {Session.Name}", LogLevel.Info);
+    }
+
+    private void ClearOutboundHistory()
+    {
+        if (Session == null)
+            return;
+
+        DdsState.ClearOutbound(Session.SessionId);
+        _selectedOutboundTopicName = null;
+        _selectedOutboundKey = null;
+        _cachedDdsOutboundVersion = -1;
+        _cachedRecentOutbound = [];
+        State.AddLog($"DDS 송신 기록 초기화: {Session.Name}", LogLevel.Info);
+    }
+
+    private static string? ResolveSelectedOutboundTopic(IReadOnlyList<string> topics, string? selected)
+    {
+        if (topics.Count == 0)
+            return null;
+
+        return !string.IsNullOrWhiteSpace(selected) && topics.Contains(selected, StringComparer.Ordinal)
+            ? selected
+            : null;
+    }
+
+    private static DdsOutboundEntry? ResolveSelectedOutboundMessage(IReadOnlyList<DdsOutboundEntry> messages, string? selectedKey)
+    {
+        if (messages.Count == 0)
+            return null;
+
+        return messages.FirstOrDefault(message => OutboundKey(message) == selectedKey) ?? messages[0];
+    }
+
+    private static string OutboundKey(DdsOutboundEntry entry)
+        => $"{entry.Timestamp.Ticks}:{entry.TopicName}:{entry.TypeName}:{entry.Success}";
+
     private async void OnDdsStateChanged()
     {
-        await InvokeAsync(StateHasChanged);
+        if (Interlocked.Exchange(ref _renderQueued, 1) == 1)
+            return;
+
+        try
+        {
+            var elapsedMs = (DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastRenderTicks)) / TimeSpan.TicksPerMillisecond;
+            if (elapsedMs < 120)
+                await Task.Delay((int)(120 - elapsedMs));
+
+            Interlocked.Exchange(ref _lastRenderTicks, DateTime.UtcNow.Ticks);
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _renderQueued, 0);
+        }
     }
 
     private void AppendLog(string scope, string level, string message)
     {
-        if (Session == null) return;
-
-        Session.LogEntries.Insert(0, new DdsSessionLogEntry
+        var logLevel = level switch
         {
-            TimestampUtc = DateTime.UtcNow,
-            Scope = scope,
-            Level = level,
-            Message = message,
-        });
+            "ERROR" => LogLevel.Error,
+            "WARN" => LogLevel.Warn,
+            _ => LogLevel.Info,
+        };
 
-        if (Session.LogEntries.Count > MaxLogEntries)
-        {
-            Session.LogEntries.RemoveRange(MaxLogEntries, Session.LogEntries.Count - MaxLogEntries);
-        }
+        if (logLevel == LogLevel.Info)
+            return;
+
+        State.AddLog(message, logLevel);
     }
 
     private static Color LogColor(string level) => level switch
@@ -1858,8 +2024,6 @@ else
     {
         DdsState.StateChanged -= OnDdsStateChanged;
         DdsState.SampleReceived -= OnSampleReceived;
-        _scenarioCts?.Cancel();
-        _scenarioCts?.Dispose();
     }
 
     private static string SanitizeFileName(string value)
@@ -1877,5 +2041,6 @@ else
     }
 
     private sealed record DdsScenarioGroupVm(string Name, List<DdsScenarioStep> OrderedSteps);
+    private sealed record DdsOutboundTopicVm(string TopicName, List<DdsOutboundEntry> Messages);
 
 }

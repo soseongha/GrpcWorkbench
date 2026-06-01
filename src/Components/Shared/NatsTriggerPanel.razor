@@ -11,8 +11,8 @@
         <div class="d-flex align-center mb-2" style="gap:8px;">
             <MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" Color="Color.Warning" />
             <div>
-                <div class="wb-panel-kicker">@(Embedded ? "자동 실행" : "NATS 자동화")</div>
-                <div class="wb-panel-heading">주기 / 다발 / 수신-응답 subject 발행</div>
+                <div class="wb-panel-kicker">@(Embedded ? "자동" : "NATS")</div>
+                <div class="wb-panel-heading" title="주기 / 다발 / 수신-응답 subject 발행">자동화</div>
             </div>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@_triggers.Count</MudChip>
             <MudSpacer />
@@ -24,7 +24,7 @@
         @if (_showAddForm)
         {
             <div class="wb-subpanel mt-2 pa-3">
-                <div class="wb-panel-kicker">새 자동 실행</div>
+                <div class="wb-panel-kicker">새로</div>
                 <div class="wb-home-form mt-2">
                     <MudTextField @bind-Value="_draft.Name" Label="이름" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     <MudSelect T="NatsTriggerType" @bind-Value="_draft.Type" Label="타입" Variant="Variant.Outlined" Margin="Margin.Dense">
@@ -32,7 +32,7 @@
                         <MudSelectItem Value="NatsTriggerType.Bulk">다발 (Bulk)</MudSelectItem>
                         <MudSelectItem Value="NatsTriggerType.OnIncoming">수신-응답 (OnIncoming)</MudSelectItem>
                     </MudSelect>
-                    <MudTextField @bind-Value="_draft.Subject" Label="발행 subject" Placeholder="example.subject"
+                    <MudTextField @bind-Value="_draft.Subject" Label="발행 subject" Placeholder="dds.sidecar.to-dds.AirThreatInformation"
                                   Variant="Variant.Outlined" Margin="Margin.Dense" />
                     @if (_draft.Type == NatsTriggerType.Periodic)
                     {
@@ -168,7 +168,7 @@
             _draft = new NatsTrigger
             {
                 SessionId = Session.SessionId,
-                Subject = "example.subject",
+                Subject = "dds.sidecar.to-dds.AirThreatInformation",
             };
         }
     }

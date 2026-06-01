@@ -1,17 +1,19 @@
 @using System.Xml.Linq
 @using ASAP.Models.Dds
 @using ASAP.Services
+@using LogLevel = ASAP.Models.Ui.LogLevel
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Hosting
 @inject IDdsSessionService DdsSessions
 @inject ISnackbar Snackbar
 @inject IWebHostEnvironment WebHostEnv
+@inject WorkbenchStateService State
 
 <div class="wb-panel wb-panel--contain pa-3">
-    <div class="wb-panel-kicker">새 DDS 세션</div>
-    <div class="wb-panel-heading">도메인만 정하면 기본 샘플로 바로 시작</div>
+    <div class="wb-panel-kicker">DDS</div>
+    <div class="wb-panel-heading" title="도메인만 정하면 기본 샘플로 바로 시작합니다">세션</div>
 
-    <div class="wb-inline-note mt-2">XML 업로드는 선택 사항. 비워 두면 저장소 기본 DDSSim 샘플과 topic/QoS 설정으로 바로 세션을 열어요.</div>
+    <div class="wb-inline-note mt-2" title="XML 업로드는 선택 사항입니다. 비워 두면 저장소 기본 DDSSim 샘플과 topic/QoS 설정으로 바로 세션을 엽니다.">샘플 사용 가능</div>
 
     <div class="wb-home-form mt-3">
         <MudTextField @bind-Value="_name" Label="세션 이름" Placeholder="예: DDSSim domain 0"
@@ -131,12 +133,13 @@
                 ConfigXmlContent = configXml,
                 ConfigXmlFileName = configFileName,
             }));
-            Snackbar.Add($"DDS 세션 생성: {session.Name}", Severity.Success);
+            State.AddLog($"DDS 세션 생성: {session.Name}", LogLevel.Success);
             await OnCreated.InvokeAsync(session);
         }
         catch (Exception ex)
         {
             _error = ex.Message;
+            State.AddLog($"DDS 세션 생성 실패: {ex.Message}", LogLevel.Error);
         }
         finally
         {

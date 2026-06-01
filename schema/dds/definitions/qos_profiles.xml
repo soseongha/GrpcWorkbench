@@ -1,16 +1,16 @@
 <qos_library name="AmbassadorProfiles">
 
   <!-- ReliableRealtime
-       writer: RELIABLE KEEP_LAST(1) (fire-and-forget, 메모리 무한 축적 없음)
-       reader: RELIABLE KEEP_ALL  (DDS→gRPC 경로 무손실) -->
+       RELIABLE KEEP_ALL on both writer and reader.
+       This prioritizes no intentional DDS history loss; slow consumers apply backpressure
+       and memory can grow if downstream remains stalled. -->
   <qos_profile name="ReliableRealtime">
     <datawriter_qos>
       <reliability>
         <kind>RELIABLE_RELIABILITY_QOS</kind>
       </reliability>
       <history>
-        <kind>KEEP_LAST_HISTORY_QOS</kind>
-        <depth>1</depth>
+        <kind>KEEP_ALL_HISTORY_QOS</kind>
       </history>
       <liveliness>
         <kind>AUTOMATIC_LIVELINESS_QOS</kind>

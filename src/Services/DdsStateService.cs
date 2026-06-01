@@ -12,16 +12,16 @@ namespace ASAP.Services;
 /// </summary>
 public sealed class DdsStateService
 {
-    private const int MaxSamplesPerSubscription = 100;
-    private const int MaxOutboundLogPerSession = 100;
-
     private readonly IDdsSessionService _sessions;
     private readonly ILogger<DdsStateService> _logger;
+    private readonly object _subscriptionGate = new();
 
     private readonly ConcurrentDictionary<string, DdsSubscriptionInfo> _subscriptions = new();
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<DdsSampleEntry>> _samples = new();
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<DdsOutboundEntry>> _outbound = new();
+    private readonly Dictionary<string, string> _subscriptionByReaderKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, EntryBuffer<DdsSampleEntry>> _samples = new();
+    private readonly ConcurrentDictionary<string, EntryBuffer<DdsOutboundEntry>> _outbound = new();
     private readonly ConcurrentDictionary<string, long> _publishSeq = new();
+    private long _subscriptionVersion;
 
     public event Action? StateChanged;
     public event Action<DdsSubscriptionInfo, DdsSampleEntry>? SampleReceived;
@@ -41,6 +41,17 @@ public sealed class DdsStateService
             ?? throw new InvalidOperationException($"DDS 세션 없음: {sessionId}");
 
         var fullQos = QualifyProfile(qosProfileName);
+        var readerKey = BuildReaderKey(sessionId, topicName);
+        lock (_subscriptionGate)
+        {
+            if (_subscriptionByReaderKey.TryGetValue(readerKey, out var existingId)
+                && _subscriptions.TryGetValue(existingId, out var existing)
+                && existing.IsActive)
+            {
+                return existing;
+            }
+        }
+
         var reader = host.GetOrCreateReader(topicName, typeName, fullQos);
 
         var info = new DdsSubscriptionInfo
@@ -51,11 +62,21 @@ public sealed class DdsStateService
             TypeName = typeName,
             StartedAt = DateTime.UtcNow,
         };
-        _subscriptions[info.SubscriptionId] = info;
-        _samples[info.SubscriptionId] = new ConcurrentQueue<DdsSampleEntry>();
+        lock (_subscriptionGate)
+        {
+            if (_subscriptionByReaderKey.TryGetValue(readerKey, out var existingId)
+                && _subscriptions.TryGetValue(existingId, out var existing)
+                && existing.IsActive)
+            {
+                return existing;
+            }
 
-        // DataAvailable 이벤트 구독 — 같은 reader에 여러 subscription이 붙으면 모두에게 broadcast
-        reader.DataAvailable += anyReader => HandleDataAvailable(anyReader, info);
+            _samples[info.SubscriptionId] = new EntryBuffer<DdsSampleEntry>();
+            reader.DataAvailable += anyReader => HandleDataAvailable(anyReader, info);
+            _subscriptions[info.SubscriptionId] = info;
+            _subscriptionByReaderKey[readerKey] = info.SubscriptionId;
+        }
+        Interlocked.Increment(ref _subscriptionVersion);
 
         _logger.LogInformation("DDS 구독 시작: {Topic} ({Sub})", topicName, info.SubscriptionId);
         StateChanged?.Invoke();
@@ -67,7 +88,12 @@ public sealed class DdsStateService
         if (_subscriptions.TryRemove(subscriptionId, out var info))
         {
             info.IsActive = false;
+            lock (_subscriptionGate)
+            {
+                _subscriptionByReaderKey.Remove(BuildReaderKey(info.SessionId, info.TopicName));
+            }
             _samples.TryRemove(subscriptionId, out _);
+            Interlocked.Increment(ref _subscriptionVersion);
 
             // 같은 topic을 다른 sub가 더 보고 있지 않으면 reader 제거
             var stillUsed = _subscriptions.Values.Any(s =>
@@ -87,10 +113,35 @@ public sealed class DdsStateService
             .OrderBy(s => s.StartedAt)
             .ToList();
 
-    public IReadOnlyList<DdsSampleEntry> SnapshotSamples(string subscriptionId, int max = 50)
+    public IReadOnlyList<DdsSampleEntry> SnapshotSamples(string subscriptionId, int max = int.MaxValue)
     {
-        if (!_samples.TryGetValue(subscriptionId, out var q)) return [];
-        return q.Reverse().Take(max).ToList();
+        return _samples.TryGetValue(subscriptionId, out var buffer)
+            ? buffer.SnapshotNewestFirst(max)
+            : [];
+    }
+
+    public long SubscriptionVersion => Interlocked.Read(ref _subscriptionVersion);
+
+    public long SampleVersion(string subscriptionId)
+        => _samples.TryGetValue(subscriptionId, out var buffer) ? buffer.Version : -1;
+
+    public void ClearSamples(string sessionId)
+    {
+        foreach (var subscription in _subscriptions.Values.Where(item => item.SessionId == sessionId))
+        {
+            if (_samples.TryGetValue(subscription.SubscriptionId, out var buffer))
+                buffer.Clear();
+
+            Interlocked.Exchange(ref subscription.ReceivedCount, 0);
+            lock (subscription)
+            {
+                subscription.LatencySampleCount = 0;
+                subscription.TotalLatencyMs = 0;
+                subscription.LastSample = null;
+            }
+        }
+
+        StateChanged?.Invoke();
     }
 
     // ── Publishing ────────────────────────────────────────────────
@@ -139,10 +190,22 @@ public sealed class DdsStateService
         return new DdsPublishResult(true, null);
     }
 
-    public IReadOnlyList<DdsOutboundEntry> SnapshotOutbound(string sessionId, int max = 50)
+    public IReadOnlyList<DdsOutboundEntry> SnapshotOutbound(string sessionId, int max = int.MaxValue)
     {
-        if (!_outbound.TryGetValue(sessionId, out var q)) return [];
-        return q.Reverse().Take(max).ToList();
+        return _outbound.TryGetValue(sessionId, out var buffer)
+            ? buffer.SnapshotNewestFirst(max)
+            : [];
+    }
+
+    public long OutboundVersion(string sessionId)
+        => _outbound.TryGetValue(sessionId, out var buffer) ? buffer.Version : -1;
+
+    public void ClearOutbound(string sessionId)
+    {
+        if (_outbound.TryGetValue(sessionId, out var buffer))
+            buffer.Clear();
+
+        StateChanged?.Invoke();
     }
 
     public void RecordExternalPublish(
@@ -189,7 +252,9 @@ public sealed class DdsStateService
                                         + s.Info.SourceTimestamp.Nanoseconds,
                 };
                 info.LastSample = entry;
-                EnqueueBounded(_samples[info.SubscriptionId], entry, MaxSamplesPerSubscription);
+                RecordLatency(info, entry);
+                if (_samples.TryGetValue(info.SubscriptionId, out var buffer))
+                    buffer.Append(entry);
                 SampleReceived?.Invoke(info, entry);
             }
             StateChanged?.Invoke();
@@ -204,14 +269,25 @@ public sealed class DdsStateService
 
     private void RecordOutbound(string sessionId, DdsOutboundEntry entry)
     {
-        var q = _outbound.GetOrAdd(sessionId, _ => new ConcurrentQueue<DdsOutboundEntry>());
-        EnqueueBounded(q, entry, MaxOutboundLogPerSession);
+        var buffer = _outbound.GetOrAdd(sessionId, _ => new EntryBuffer<DdsOutboundEntry>());
+        buffer.Append(entry);
     }
 
-    private static void EnqueueBounded<T>(ConcurrentQueue<T> q, T item, int max)
+    private static void RecordLatency(DdsSubscriptionInfo info, DdsSampleEntry entry)
     {
-        q.Enqueue(item);
-        while (q.Count > max) q.TryDequeue(out _);
+        if (entry.SourceTimestampNs <= 0)
+            return;
+
+        var source = DateTimeOffset.FromUnixTimeMilliseconds(entry.SourceTimestampNs / 1_000_000).UtcDateTime;
+        var latencyMs = (entry.ReceivedAt - source).TotalMilliseconds;
+        if (latencyMs < 0 || double.IsNaN(latencyMs) || double.IsInfinity(latencyMs))
+            return;
+
+        lock (info)
+        {
+            info.TotalLatencyMs += latencyMs;
+            info.LatencySampleCount++;
+        }
     }
 
     private static string QualifyProfile(string profileName)
@@ -219,6 +295,9 @@ public sealed class DdsStateService
         if (string.IsNullOrWhiteSpace(profileName)) return string.Empty;
         return profileName.Contains("::") ? profileName : $"AmbassadorProfiles::{profileName}";
     }
+
+    private static string BuildReaderKey(string sessionId, string topicName)
+        => $"{sessionId}|{topicName}";
 }
 
 public sealed record DdsPublishResult(bool Success, string? Error);
@@ -231,4 +310,60 @@ public sealed class DdsOutboundEntry
     public required string JsonPayload { get; init; }
     public required bool Success { get; init; }
     public string? Error { get; init; }
+}
+
+internal sealed class EntryBuffer<T> where T : class
+{
+    private readonly object _gate = new();
+    private const int ChunkSize = 4096;
+    private readonly List<T[]> _chunks = [];
+    private int _count;
+    private long _version;
+
+    public long Version => Interlocked.Read(ref _version);
+
+    public void Append(T item)
+    {
+        lock (_gate)
+        {
+            var chunkIndex = _count / ChunkSize;
+            var offset = _count % ChunkSize;
+            if (offset == 0)
+                _chunks.Add(new T[ChunkSize]);
+
+            _chunks[chunkIndex][offset] = item;
+            _count++;
+            _version++;
+        }
+    }
+
+    public List<T> SnapshotNewestFirst(int max)
+    {
+        lock (_gate)
+        {
+            var count = max == int.MaxValue ? _count : Math.Min(Math.Max(0, max), _count);
+            if (count == 0)
+                return [];
+
+            var result = new List<T>(count);
+            for (var index = _count - 1; index >= _count - count; index--)
+            {
+                var item = _chunks[index / ChunkSize][index % ChunkSize];
+                if (item != null)
+                    result.Add(item);
+            }
+
+            return result;
+        }
+    }
+
+    public void Clear()
+    {
+        lock (_gate)
+        {
+            _chunks.Clear();
+            _count = 0;
+            _version++;
+        }
+    }
 }

@@ -11,8 +11,8 @@
         <div class="d-flex align-center mb-2" style="gap:8px;">
             <MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" Color="Color.Warning" />
             <div>
-                <div class="wb-panel-kicker">@(Embedded ? "자동 실행" : "DDS 자동화")</div>
-                <div class="wb-panel-heading">주기 / 다발 / 수신-응답 자동 발행</div>
+                <div class="wb-panel-kicker">@(Embedded ? "자동" : "DDS")</div>
+                <div class="wb-panel-heading" title="주기 / 다발 / 수신-응답 자동 발행">자동화</div>
             </div>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@_triggers.Count</MudChip>
             <MudSpacer />
@@ -24,7 +24,7 @@
         @if (_showAddForm)
         {
             <div class="wb-subpanel mt-2 pa-3">
-                <div class="wb-panel-kicker">새 자동 실행</div>
+                <div class="wb-panel-kicker">새로</div>
                 <div class="wb-home-form mt-2">
                     <MudTextField @bind-Value="_draft.Name" Label="이름" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     <MudSelect T="DdsTriggerType" @bind-Value="_draft.Type" Label="타입" Variant="Variant.Outlined" Margin="Margin.Dense">

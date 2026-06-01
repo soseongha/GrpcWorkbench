@@ -19,13 +19,19 @@ public interface INatsSessionService
     Task StartSubscriptionAsync(string sessionId, string subject, CancellationToken cancellationToken = default);
     Task StopSubscriptionAsync(string sessionId, string subject);
     IReadOnlyList<NatsSubscriptionInfo> SnapshotSubscriptions(string sessionId);
-    IReadOnlyList<NatsMessageEntry> SnapshotInbound(string sessionId, int take = 100);
-    IReadOnlyList<NatsMessageEntry> SnapshotOutbound(string sessionId, int take = 100);
+    IReadOnlyList<NatsMessageEntry> SnapshotInbound(string sessionId, int take = int.MaxValue);
+    IReadOnlyList<NatsMessageEntry> SnapshotOutbound(string sessionId, int take = int.MaxValue);
+    int InboundCount(string sessionId);
+    int OutboundCount(string sessionId);
+    void ClearInbound(string sessionId);
+    void ClearOutbound(string sessionId);
+    NatsSessionVersions GetVersions(string sessionId);
 }
+
+public readonly record struct NatsSessionVersions(long Subscriptions, long Inbound, long Outbound);
 
 public sealed class NatsSessionService : INatsSessionService
 {
-    private const int MaxMessagesPerDirection = 200;
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private readonly ConcurrentDictionary<string, SessionRuntime> _sessions = new();
@@ -101,14 +107,20 @@ public sealed class NatsSessionService : INatsSessionService
 
         await runtime.Connection.PublishAsync(normalizedSubject, payload, cancellationToken: cancellationToken);
         Touch(runtime.Session);
-        Append(runtime.Outbound, new NatsMessageEntry
+        var entry = new NatsMessageEntry
         {
             Subject = normalizedSubject,
             Direction = "Outbound",
             PayloadText = payloadText ?? DecodePayload(payload),
             PayloadBase64 = Convert.ToBase64String(payload),
             PayloadSize = payload.Length,
-        });
+        };
+
+        lock (runtime.Gate)
+        {
+            Append(runtime.Outbound, entry);
+            runtime.OutboundVersion++;
+        }
 
         _logger.LogInformation("NATS outbound {SessionId} {Subject} ({Bytes} bytes)", sessionId, normalizedSubject, payload.Length);
     }
@@ -134,6 +146,7 @@ public sealed class NatsSessionService : INatsSessionService
 
             var pumpTask = Task.Run(() => PumpSubscriptionAsync(runtime, info, cts.Token), CancellationToken.None);
             runtime.Subscriptions[normalizedSubject] = new SubscriptionRuntime(info, cts, pumpTask);
+            runtime.SubscriptionsVersion++;
             Touch(runtime.Session);
         }
 
@@ -151,6 +164,8 @@ public sealed class NatsSessionService : INatsSessionService
         {
             if (!runtime.Subscriptions.Remove(normalizedSubject, out subscription))
                 return;
+
+            runtime.SubscriptionsVersion++;
         }
 
         subscription.Cancellation.Cancel();
@@ -186,25 +201,74 @@ public sealed class NatsSessionService : INatsSessionService
         }
     }
 
-    public IReadOnlyList<NatsMessageEntry> SnapshotInbound(string sessionId, int take = 100)
+    public IReadOnlyList<NatsMessageEntry> SnapshotInbound(string sessionId, int take = int.MaxValue)
     {
         var runtime = GetRuntime(sessionId);
         lock (runtime.Gate)
         {
-            return runtime.Inbound.TakeLast(Math.Max(1, take))
+            return runtime.Inbound.SnapshotNewestLast(Math.Max(1, take))
                 .Select(CloneMessage)
                 .ToList();
         }
     }
 
-    public IReadOnlyList<NatsMessageEntry> SnapshotOutbound(string sessionId, int take = 100)
+    public IReadOnlyList<NatsMessageEntry> SnapshotOutbound(string sessionId, int take = int.MaxValue)
     {
         var runtime = GetRuntime(sessionId);
         lock (runtime.Gate)
         {
-            return runtime.Outbound.TakeLast(Math.Max(1, take))
+            return runtime.Outbound.SnapshotNewestLast(Math.Max(1, take))
                 .Select(CloneMessage)
                 .ToList();
+        }
+    }
+
+    public int InboundCount(string sessionId)
+    {
+        var runtime = GetRuntime(sessionId);
+        lock (runtime.Gate)
+        {
+            return runtime.Inbound.Count;
+        }
+    }
+
+    public int OutboundCount(string sessionId)
+    {
+        var runtime = GetRuntime(sessionId);
+        lock (runtime.Gate)
+        {
+            return runtime.Outbound.Count;
+        }
+    }
+
+    public void ClearInbound(string sessionId)
+    {
+        var runtime = GetRuntime(sessionId);
+        lock (runtime.Gate)
+        {
+            runtime.Inbound.Clear();
+            runtime.InboundVersion++;
+            Touch(runtime.Session);
+        }
+    }
+
+    public void ClearOutbound(string sessionId)
+    {
+        var runtime = GetRuntime(sessionId);
+        lock (runtime.Gate)
+        {
+            runtime.Outbound.Clear();
+            runtime.OutboundVersion++;
+            Touch(runtime.Session);
+        }
+    }
+
+    public NatsSessionVersions GetVersions(string sessionId)
+    {
+        var runtime = GetRuntime(sessionId);
+        lock (runtime.Gate)
+        {
+            return new NatsSessionVersions(runtime.SubscriptionsVersion, runtime.InboundVersion, runtime.OutboundVersion);
         }
     }
 
@@ -227,6 +291,7 @@ public sealed class NatsSessionService : INatsSessionService
                 lock (runtime.Gate)
                 {
                     Append(runtime.Inbound, entry);
+                    runtime.InboundVersion++;
                 }
 
                 Touch(runtime.Session);
@@ -242,11 +307,9 @@ public sealed class NatsSessionService : INatsSessionService
         }
     }
 
-    private static void Append(List<NatsMessageEntry> target, NatsMessageEntry entry)
+    private static void Append(SegmentedEntryBuffer<NatsMessageEntry> target, NatsMessageEntry entry)
     {
-        target.Add(entry);
-        if (target.Count > MaxMessagesPerDirection)
-            target.RemoveRange(0, target.Count - MaxMessagesPerDirection);
+        target.Append(entry);
     }
 
     private static NatsMessageEntry CloneMessage(NatsMessageEntry entry)
@@ -304,9 +367,12 @@ public sealed class NatsSessionService : INatsSessionService
         public NatsSession Session { get; }
         public NatsConnection Connection { get; }
         public object Gate { get; } = new();
-        public List<NatsMessageEntry> Inbound { get; } = [];
-        public List<NatsMessageEntry> Outbound { get; } = [];
+        public SegmentedEntryBuffer<NatsMessageEntry> Inbound { get; } = new();
+        public SegmentedEntryBuffer<NatsMessageEntry> Outbound { get; } = new();
         public Dictionary<string, SubscriptionRuntime> Subscriptions { get; } = new(StringComparer.Ordinal);
+        public long SubscriptionsVersion { get; set; }
+        public long InboundVersion { get; set; }
+        public long OutboundVersion { get; set; }
         public CancellationTokenSource SessionLifetime { get; } = new();
 
         public async ValueTask DisposeAsync()
@@ -346,4 +412,48 @@ public sealed class NatsSessionService : INatsSessionService
     }
 
     private sealed record SubscriptionRuntime(NatsSubscriptionInfo Info, CancellationTokenSource Cancellation, Task PumpTask);
+
+    private sealed class SegmentedEntryBuffer<T> where T : class
+    {
+        private const int ChunkSize = 4096;
+        private readonly List<T[]> _chunks = [];
+        private int _count;
+
+        public int Count => _count;
+
+        public void Append(T item)
+        {
+            var chunkIndex = _count / ChunkSize;
+            var offset = _count % ChunkSize;
+            if (offset == 0)
+                _chunks.Add(new T[ChunkSize]);
+
+            _chunks[chunkIndex][offset] = item;
+            _count++;
+        }
+
+        public List<T> SnapshotNewestLast(int max)
+        {
+            var count = max == int.MaxValue ? _count : Math.Min(Math.Max(0, max), _count);
+            if (count == 0)
+                return [];
+
+            var result = new List<T>(count);
+            var start = _count - count;
+            for (var index = start; index < _count; index++)
+            {
+                var item = _chunks[index / ChunkSize][index % ChunkSize];
+                if (item != null)
+                    result.Add(item);
+            }
+
+            return result;
+        }
+
+        public void Clear()
+        {
+            _chunks.Clear();
+            _count = 0;
+        }
+    }
 }

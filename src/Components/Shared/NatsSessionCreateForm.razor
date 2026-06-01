@@ -1,14 +1,17 @@
 @using ASAP.Models.Session
 @using ASAP.Nats
+@using ASAP.Services
+@using LogLevel = ASAP.Models.Ui.LogLevel
 @inject IConfiguration Configuration
 @inject INatsSessionService NatsSessions
 @inject ISnackbar Snackbar
+@inject WorkbenchStateService State
 
 <div class="wb-panel wb-panel--contain pa-3">
-    <div class="wb-panel-kicker">새 NATS 세션</div>
-    <div class="wb-panel-heading">브로커 URL만 정하면 바로 세션을 엽니다</div>
+    <div class="wb-panel-kicker">NATS</div>
+    <div class="wb-panel-heading" title="브로커 URL만 정하면 바로 세션을 엽니다">세션</div>
 
-    <div class="wb-inline-note mt-2">같은 Pod 안의 broker를 테스트할 거면 기본값 그대로 `nats://localhost:4222`를 쓰면 됩니다.</div>
+    <div class="wb-inline-note mt-2" title="같은 Pod 안의 broker를 테스트할 거면 기본값 그대로 nats://localhost:4222를 쓰면 됩니다.">기본값 사용 가능</div>
 
     <div class="wb-home-form mt-3">
         <MudTextField @bind-Value="_name" Label="세션 이름" Placeholder="예: Local broker"
@@ -17,7 +20,7 @@
                       Variant="Variant.Outlined" Margin="Margin.Dense" />
     </div>
 
-    <div class="wb-inline-note mt-3">생성 후에는 DDS 화면과 비슷하게 수신 subject 목록, 메시지 목록, payload 상세를 분리해서 보게 됩니다.</div>
+    <div class="wb-inline-note mt-3" title="생성 후에는 DDS 화면과 비슷하게 수신 subject 목록, 메시지 목록, payload 상세를 분리해서 봅니다.">수신/송신 분리</div>
 
     @if (!string.IsNullOrWhiteSpace(_error))
     {
@@ -63,12 +66,13 @@
         try
         {
             var session = await NatsSessions.CreateAsync(_url, _name);
-            Snackbar.Add($"NATS 세션 생성: {session.Name}", Severity.Success);
+            State.AddLog($"NATS 세션 생성: {session.Name}", LogLevel.Success);
             await OnCreated.InvokeAsync(session);
         }
         catch (Exception ex)
         {
             _error = ex.Message;
+            State.AddLog($"NATS 세션 생성 실패: {ex.Message}", LogLevel.Error);
         }
         finally
         {

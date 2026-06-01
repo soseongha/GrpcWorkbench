@@ -1,7 +1,18 @@
 @inherits LayoutComponentBase
 @inject UiStateService Ui
 @inject IJSRuntime JS
+@inject ISessionService SessionService
+@inject WorkbenchStateService State
+@inject IDdsSessionService DdsSessions
+@inject DdsStateService DdsState
+@inject INatsSessionService NatsSessions
 @implements IDisposable
+@using System.Reflection
+@using ASAP.Models.Dds
+@using ASAP.Models.Session
+@using ASAP.Models.Ui
+@using ASAP.Services
+@using ASAP.Nats
 
 <MudThemeProvider Theme="_theme" IsDarkMode="Ui.IsDarkMode" />
 <MudPopoverProvider />
@@ -15,34 +26,54 @@
         <MudText Typo="Typo.subtitle1" Style="font-weight:700;letter-spacing:.02em;">
             Signal Forge
         </MudText>
+        <MudText Typo="Typo.caption" Class="ml-2 wb-brand-mark d-none d-sm-inline-flex">
+            LIG Defense&amp;Aerospace
+        </MudText>
+        <MudText Typo="Typo.caption" Class="ml-2 wb-brand-mark d-inline-flex d-sm-none">
+            LIG
+        </MudText>
         <MudText Typo="Typo.caption" Class="ml-3 d-none d-sm-flex"
                  Style="color:var(--mud-palette-text-disabled);">
-            gRPC · DDS 메시지 스튜디오
+            @AppVersion
         </MudText>
+        <MudText Typo="Typo.caption" Class="ml-3 d-none d-md-flex wb-mono"
+                 Style="color:var(--mud-palette-text-secondary);font-weight:600;">
+            @CurrentTimeText
+        </MudText>
+        <MudMenu Dense="true" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+            <ActivatorContent>
+                <MudTooltip Text="시간 표기 기준">
+                    <MudIconButton Icon="@Icons.Material.Filled.Schedule"
+                                   Color="Color.Inherit"
+                                   Size="Size.Small" />
+                </MudTooltip>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="@(() => SetTimeDisplayAsync(TimeDisplayMode.Kst))">KST</MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetTimeDisplayAsync(TimeDisplayMode.Utc))">UTC</MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetTimeDisplayAsync(TimeDisplayMode.UnixEpoch))">Unix Epoch</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+        <MudButton Variant="Variant.Text" Color="Color.Inherit" Size="Size.Small"
+                   Class="ml-2" StartIcon="@Icons.Material.Filled.MonitorHeart"
+                   OnClick="@(() => _statusOpen = !_statusOpen)">
+            상태
+        </MudButton>
+        <MudButton Variant="Variant.Text" Color="Color.Inherit" Size="Size.Small"
+                   Class="ml-1" StartIcon="@Icons.Material.Filled.Terminal"
+                   OnClick="@(() => _logsOpen = !_logsOpen)">
+            로그 @State.LogCount
+        </MudButton>
 
         <MudSpacer />
 
         <div class="d-flex align-center mr-3" style="gap:10px;">
-            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@Ui.WorkspaceLabel</MudChip>
-            @if (!string.IsNullOrWhiteSpace(Ui.WorkspaceDetail))
-            {
-                <MudText Typo="Typo.caption" Style="font-weight:600;">
-                    @Ui.WorkspaceDetail
-                </MudText>
-            }
-            <div class="d-flex align-center" style="gap:8px;">
-                <span class="wb-dot @(Ui.IsConnected ? "wb-dot--on" : "wb-dot--off")"></span>
-                <MudText Typo="Typo.caption" Style="font-weight:600;">
-                    @(Ui.IsConnected ? "gRPC 연결됨" : "gRPC 미연결")
-                </MudText>
-                @if (Ui.IsConnected && !string.IsNullOrEmpty(Ui.SocketPath))
-                {
-                    <MudText Typo="Typo.caption" Class="wb-mono d-none d-md-flex"
-                             Style="color:var(--mud-palette-text-secondary);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                        @Ui.SocketPath
-                    </MudText>
-                }
-            </div>
+            <MudTooltip Text="이번 버전: 홈 상태 요약, 짧은 제목, DDS/NATS 메시지 트리, NATS 탭 즉시 닫기">
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">변경사항</MudChip>
+            </MudTooltip>
+            <MudText Typo="Typo.caption" Class="d-none d-md-flex" Style="font-weight:600;">
+                상태 · 트리 · 제목
+            </MudText>
         </div>
 
         <MudTooltip Text="@(Ui.IsDarkMode ? "라이트 모드" : "다크 모드")">
@@ -52,13 +83,125 @@
         </MudTooltip>
     </MudAppBar>
 
+    @if (_statusOpen)
+    {
+        <div class="wb-top-status-popover">
+            <div class="d-flex align-center mb-2" style="gap:8px;">
+                <MudIcon Icon="@Icons.Material.Filled.MonitorHeart" Size="Size.Small" Color="Color.Info" />
+                <div>
+                    <div class="wb-panel-kicker">상태</div>
+                    <div class="wb-panel-heading">Signal Forge</div>
+                </div>
+                <MudSpacer />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _statusOpen = false)" />
+            </div>
+            <div class="wb-forge-status-grid">
+                @foreach (var item in BuildForgeStatus())
+                {
+                    <div class="wb-forge-status-card">
+                        <div class="wb-forge-status-head">
+                            <div>
+                                <div class="wb-panel-kicker">@item.Kind</div>
+                                <div class="wb-panel-heading">@item.State</div>
+                            </div>
+                            <span class="wb-dot @(item.IsOnline ? "wb-dot--on" : "wb-dot--off")"></span>
+                        </div>
+                        <div class="wb-forge-status-row">
+                            <span>대상</span>
+                            <strong title="@item.TargetTitle">@item.Target</strong>
+                        </div>
+                        <div class="wb-forge-status-row">
+                            <span>브로커</span>
+                            <strong>@item.Broker</strong>
+                        </div>
+                        <div class="wb-forge-status-row">
+                            <span>메시지</span>
+                            <strong>@item.Flow</strong>
+                        </div>
+                        <div class="wb-forge-status-row">
+                            <span>P2P 지연</span>
+                            <strong title="@item.LatencyTitle">@item.Latency</strong>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_logsOpen)
+    {
+        <div class="wb-top-log-popover">
+            <div class="d-flex align-center mb-2" style="gap:8px;">
+                <MudIcon Icon="@Icons.Material.Filled.Terminal" Size="Size.Small" Color="Color.Info" />
+                <div>
+                    <div class="wb-panel-kicker">통합</div>
+                    <div class="wb-panel-heading">로그</div>
+                </div>
+                <MudSpacer />
+                <MudIconButton Icon="@Icons.Material.Filled.DeleteSweep" Size="Size.Small" OnClick="ClearGlobalLogs" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _logsOpen = false)" />
+            </div>
+            <div class="wb-code wb-scroll" style="max-height:360px;">
+                @{
+                    var logs = State.SnapshotLogs();
+                }
+                @if (logs.Count == 0)
+                {
+                    <span style="color:var(--mud-palette-text-disabled);">로그 없음</span>
+                }
+                else
+                {
+                    @for (var index = logs.Count - 1; index >= 0; index--)
+                    {
+                        var log = logs[index];
+                        <div class="d-flex" style="gap:8px;align-items:flex-start;line-height:1.7;">
+                            <MudIcon Icon="@LogIcon(log.Level)" Size="Size.Small"
+                                     Style="@($"font-size:14px;color:{LogColorVar(log.Level)};flex:none;")" />
+                            <span style="color:var(--mud-palette-text-disabled);">@log.Time.ToString("HH:mm:ss")</span>
+                            <span style="color:@LogColorVar(log.Level);">@log.Text</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
     <MudMainContent Style="background:var(--mud-palette-background);min-height:100vh;">
         @Body
     </MudMainContent>
 </MudLayout>
 
 @code {
-    protected override void OnInitialized() => Ui.Changed += OnUiChanged;
+    private static readonly string AppVersion =
+        $"v{Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0"}";
+    private bool _statusOpen;
+    private bool _logsOpen;
+    private IReadOnlyList<ForgeStatusVm> _cachedForgeStatus = [];
+    private DateTime _forgeStatusCacheUntil = DateTime.MinValue;
+    private DateTimeOffset _currentUtc = DateTimeOffset.UtcNow;
+    private PeriodicTimer? _clockTimer;
+    private readonly CancellationTokenSource _clockCts = new();
+    private TimeDisplayMode _timeDisplayMode = TimeDisplayMode.Kst;
+
+    private string CurrentTimeText
+    {
+        get
+        {
+            return _timeDisplayMode switch
+            {
+                TimeDisplayMode.Utc => $"{_currentUtc:yyyy-MM-dd ddd HH:mm:ss.fff} UTC",
+                TimeDisplayMode.UnixEpoch => $"epoch {_currentUtc.ToUnixTimeSeconds()}s / {_currentUtc.ToUnixTimeMilliseconds()}ms UTC",
+                _ => $"{TimeZoneInfo.ConvertTime(_currentUtc, KstTimeZone):yyyy-MM-dd ddd HH:mm:ss.fff} KST"
+            };
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Ui.Changed += OnUiChanged;
+        State.Changed += OnUiChanged;
+        StartClock();
+    }
 
     private void OnUiChanged() => InvokeAsync(StateHasChanged);
 
@@ -70,6 +213,10 @@
             var stored = await JS.InvokeAsync<string?>("localStorage.getItem", "wb_dark");
             if (stored is "0" or "1")
                 Ui.SetDarkMode(stored == "1");
+
+            var storedTimeMode = await JS.InvokeAsync<string?>("localStorage.getItem", "wb_time_format");
+            if (Enum.TryParse<TimeDisplayMode>(storedTimeMode, ignoreCase: true, out var parsed))
+                _timeDisplayMode = parsed;
         }
         catch { /* localStorage 접근 실패 시 기본값(dark) 유지 */ }
     }
@@ -81,7 +228,170 @@
         catch { }
     }
 
-    public void Dispose() => Ui.Changed -= OnUiChanged;
+    public void Dispose()
+    {
+        Ui.Changed -= OnUiChanged;
+        State.Changed -= OnUiChanged;
+        _clockCts.Cancel();
+        _clockCts.Dispose();
+        _clockTimer?.Dispose();
+    }
+
+    private void ClearGlobalLogs() => State.ClearLogs();
+
+    private async Task SetTimeDisplayAsync(TimeDisplayMode mode)
+    {
+        _timeDisplayMode = mode;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "wb_time_format", mode.ToString()); }
+        catch { }
+    }
+
+    private static string LogColorVar(LogLevel level) => level switch
+    {
+        LogLevel.Success => "var(--mud-palette-success)",
+        LogLevel.Warn => "var(--mud-palette-warning)",
+        LogLevel.Error => "var(--mud-palette-error)",
+        _ => "var(--mud-palette-text-secondary)"
+    };
+
+    private static string LogIcon(LogLevel level) => level switch
+    {
+        LogLevel.Success => Icons.Material.Filled.CheckCircle,
+        LogLevel.Warn => Icons.Material.Filled.Warning,
+        LogLevel.Error => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.Info
+    };
+
+    private void StartClock()
+    {
+        _clockTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await _clockTimer.WaitForNextTickAsync(_clockCts.Token))
+                {
+                    _currentUtc = DateTimeOffset.UtcNow;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private static TimeZoneInfo KstTimeZone { get; } = ResolveKstTimeZone();
+
+    private static TimeZoneInfo ResolveKstTimeZone()
+    {
+        foreach (var id in new[] { "Asia/Seoul", "Korea Standard Time" })
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch { }
+        }
+
+        return TimeZoneInfo.Local;
+    }
+
+    private enum TimeDisplayMode
+    {
+        Kst,
+        Utc,
+        UnixEpoch
+    }
+
+    private IReadOnlyList<ForgeStatusVm> BuildForgeStatus()
+    {
+        var now = DateTime.UtcNow;
+        if (now < _forgeStatusCacheUntil)
+            return _cachedForgeStatus;
+
+        var grpcSessions = SessionService.GetAllSessions().ToList();
+        var ddsSessions = DdsSessions.GetAll().ToList();
+        var ddsSubscriptions = DdsState.SnapshotSubscriptions();
+        var natsSessions = NatsSessions.GetAll().ToList();
+        var natsSubscriptions = natsSessions
+            .SelectMany(session => NatsSessions.SnapshotSubscriptions(session.SessionId))
+            .ToList();
+        var natsInbound = natsSessions.Sum(session => NatsSessions.InboundCount(session.SessionId));
+        var natsOutbound = natsSessions.Sum(session => NatsSessions.OutboundCount(session.SessionId));
+        var grpcCalls = State.SnapshotAggregates().Sum(aggregate => State.SnapshotRecentCalls(aggregate).Count);
+        var grpcOutbound = State.SnapshotOutbound().Count;
+
+        _cachedForgeStatus =
+        [
+            new ForgeStatusVm(
+                "gRPC",
+                grpcSessions.Count > 0 ? "연결" : "대기",
+                grpcSessions.Count > 0,
+                grpcSessions.Count > 0 ? string.Join(", ", grpcSessions.Select(FormatGrpcTarget).Distinct().Take(3)) : "대상 없음",
+                grpcSessions.Count > 0 ? string.Join(", ", grpcSessions.Select(s => s.UnixSocketPath ?? s.SessionId).Distinct().Take(3)) : "gRPC 세션 없음",
+                "직접",
+                $"수신 {grpcCalls} · 송신 {grpcOutbound}",
+                "평균 측정 대기",
+                "현재 gRPC 평균 왕복 지연 측정 루프는 없습니다. echo/ping RPC를 열면 ms 단위 평균값을 붙일 수 있습니다."),
+            new ForgeStatusVm(
+                "DDS",
+                ddsSessions.Count > 0 ? "활성" : "대기",
+                ddsSessions.Count > 0,
+                ddsSessions.Count > 0 ? string.Join(", ", ddsSessions.Select(FormatDdsTarget).Distinct().Take(3)) : "대상 없음",
+                ddsSessions.Count > 0 ? string.Join(", ", ddsSessions.Select(FormatDdsTarget).Distinct().Take(3)) : "DDS 세션 없음",
+                ddsSessions.Count > 0 ? "RTPS" : "없음",
+                $"구독 {ddsSubscriptions.Count} · 수신 {ddsSubscriptions.Sum(s => s.ReceivedCount)}",
+                ResolveAverageDdsLatency(ddsSubscriptions),
+                "DDS source timestamp가 들어온 최근 샘플들의 평균 지연입니다."),
+            new ForgeStatusVm(
+                "NATS",
+                natsSessions.Count > 0 ? "활성" : "대기",
+                natsSessions.Count > 0,
+                natsSessions.Count > 0 ? string.Join(", ", natsSessions.Select(s => s.Url).Distinct().Take(3)) : "대상 없음",
+                natsSessions.Count > 0 ? string.Join(", ", natsSessions.Select(s => s.Url).Distinct().Take(3)) : "브로커 없음",
+                natsSessions.Count > 0 ? "브로커" : "없음",
+                $"구독 {natsSubscriptions.Count} · 수신 {natsInbound} · 송신 {natsOutbound}",
+                "평균 측정 대기",
+                "NATS 메시지에는 현재 원격 송신 timestamp가 없어 평균 왕복/브로커 지연은 별도 probe subject가 필요합니다.")
+        ];
+        _forgeStatusCacheUntil = now.AddMilliseconds(500);
+        return _cachedForgeStatus;
+    }
+
+    private static string FormatGrpcTarget(GrpcSession session)
+        => string.IsNullOrWhiteSpace(session.DisplayName)
+            ? session.UnixSocketPath ?? session.SessionId[..Math.Min(8, session.SessionId.Length)]
+            : session.DisplayName;
+
+    private static string FormatDdsTarget(DdsSession session)
+        => $"domain {session.Transport.DomainId}"
+            + (string.IsNullOrWhiteSpace(session.Transport.MulticastAddress) ? string.Empty : $" · {session.Transport.MulticastAddress}");
+
+    private static string ResolveAverageDdsLatency(IReadOnlyList<DdsSubscriptionInfo> subscriptions)
+    {
+        double totalMs = 0;
+        long count = 0;
+
+        foreach (var subscription in subscriptions)
+        {
+            lock (subscription)
+            {
+                totalMs += subscription.TotalLatencyMs;
+                count += subscription.LatencySampleCount;
+            }
+        }
+
+        return count == 0 ? "평균 측정 대기" : $"평균 {totalMs / count:0.0} ms";
+    }
+
+    private sealed record ForgeStatusVm(
+        string Kind,
+        string State,
+        bool IsOnline,
+        string Target,
+        string TargetTitle,
+        string Broker,
+        string Flow,
+        string Latency,
+        string LatencyTitle);
 
     private readonly MudTheme _theme = new()
     {
@@ -99,46 +409,46 @@
         },
         PaletteDark = new PaletteDark
         {
-            Primary          = "#7C5CFF",
-            Secondary        = "#22D3A6",
-            Info             = "#4FA8FF",
-            Success          = "#3FB950",
-            Warning          = "#E3A008",
-            Error            = "#F85149",
-            Background       = "#16181D",
-            Surface          = "#1E2128",
-            AppbarBackground = "#1A1C22",
-            AppbarText       = "rgba(255,255,255,0.88)",
-            DrawerBackground = "#1A1C22",
-            TextPrimary      = "rgba(255,255,255,0.88)",
-            TextSecondary    = "rgba(255,255,255,0.55)",
-            TextDisabled     = "rgba(255,255,255,0.32)",
-            ActionDefault    = "rgba(255,255,255,0.55)",
-            LinesDefault     = "#2D313A",
-            LinesInputs      = "#2D313A",
-            TableLines       = "#2D313A",
-            Divider          = "#2D313A",
-            DividerLight     = "#2D313A"
+            Primary          = "#5B8CFF",
+            Secondary        = "#2DD4BF",
+            Info             = "#38BDF8",
+            Success          = "#22C55E",
+            Warning          = "#F59E0B",
+            Error            = "#F87171",
+            Background       = "#101216",
+            Surface          = "#1A1F26",
+            AppbarBackground = "#13171D",
+            AppbarText       = "rgba(255,255,255,0.94)",
+            DrawerBackground = "#151A21",
+            TextPrimary      = "rgba(255,255,255,0.94)",
+            TextSecondary    = "rgba(255,255,255,0.70)",
+            TextDisabled     = "rgba(255,255,255,0.40)",
+            ActionDefault    = "rgba(255,255,255,0.70)",
+            LinesDefault     = "#3A4350",
+            LinesInputs      = "#465160",
+            TableLines       = "#3A4350",
+            Divider          = "#3A4350",
+            DividerLight     = "#465160"
         },
         PaletteLight = new PaletteLight
         {
-            Primary          = "#6B4DFF",
-            Secondary        = "#0EA5A0",
-            Info             = "#2563EB",
-            Success          = "#16A34A",
+            Primary          = "#365DFF",
+            Secondary        = "#0F766E",
+            Info             = "#0369A1",
+            Success          = "#15803D",
             Warning          = "#B45309",
-            Error            = "#DC2626",
-            Background       = "#F5F6F8",
+            Error            = "#B91C1C",
+            Background       = "#F3F5F8",
             Surface          = "#FFFFFF",
-            AppbarBackground = "#FFFFFF",
+            AppbarBackground = "#FAFBFC",
             AppbarText       = "rgba(0,0,0,0.87)",
             TextPrimary      = "rgba(0,0,0,0.87)",
-            TextSecondary    = "rgba(0,0,0,0.60)",
+            TextSecondary    = "rgba(0,0,0,0.66)",
             TextDisabled     = "rgba(0,0,0,0.38)",
-            LinesDefault     = "#E2E4E9",
-            LinesInputs      = "#D2D5DC",
-            Divider          = "#E2E4E9",
-            DividerLight     = "#EDEEF1"
+            LinesDefault     = "#CBD2DC",
+            LinesInputs      = "#B7C0CE",
+            Divider          = "#CBD2DC",
+            DividerLight     = "#E2E7EF"
         }
     };
 }

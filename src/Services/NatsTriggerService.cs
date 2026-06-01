@@ -79,7 +79,7 @@ public sealed class NatsTriggerService : IAsyncDisposable
     public async Task<(bool Success, string? Error)> FireOnceAsync(string triggerId)
     {
         if (!_triggers.TryGetValue(triggerId, out var trigger))
-            return (false, "�ڵ� ���� �׸��� �����ϴ�");
+            return (false, "NATS 자동 실행 항목을 찾을 수 없습니다.");
 
         return await PublishAsync(trigger);
     }
@@ -202,7 +202,7 @@ public sealed class NatsTriggerService : IAsyncDisposable
         {
             if (trigger.UseBridgeMessage)
             {
-                var bridgeMessageType = ResolveBridgeMessageType(trigger.BridgeMessageType);
+                var bridgeMessageType = await ResolveBridgeMessageTypeAsync(trigger.BridgeMessageType);
                 if (bridgeMessageType == null)
                     throw new InvalidOperationException($"NATS bridge 메시지 타입을 찾을 수 없습니다: {trigger.BridgeMessageType}");
 
@@ -227,12 +227,12 @@ public sealed class NatsTriggerService : IAsyncDisposable
         }
     }
 
-    private Type? ResolveBridgeMessageType(string? messageTypeName)
+    private async Task<Type?> ResolveBridgeMessageTypeAsync(string? messageTypeName)
     {
         if (string.IsNullOrWhiteSpace(messageTypeName))
             return null;
 
-        var assembly = GetBridgeSchemaAssemblyAsync().GetAwaiter().GetResult();
+        var assembly = await GetBridgeSchemaAssemblyAsync();
         return assembly.GetTypes().FirstOrDefault(type =>
             typeof(Google.Protobuf.IMessage).IsAssignableFrom(type)
             && string.Equals(type.Name, messageTypeName, StringComparison.Ordinal));
@@ -251,9 +251,9 @@ public sealed class NatsTriggerService : IAsyncDisposable
 
     private async Task<Assembly> LoadBridgeSchemaAssemblyAsync()
     {
-        var protoPath = Path.Combine(_environment.ContentRootPath, "nats", "DDSSim.proto");
+        var protoPath = Path.Combine(_environment.ContentRootPath, "schema", "proto", "grpc", "DDSSim.proto");
         if (!File.Exists(protoPath))
-            throw new FileNotFoundException("nats/DDSSim.proto 파일을 찾을 수 없습니다.", protoPath);
+            throw new FileNotFoundException("schema/proto/grpc/DDSSim.proto 파일을 찾을 수 없습니다.", protoPath);
 
         var protoBytes = await File.ReadAllBytesAsync(protoPath);
         return await _protoCompiler.CompileProtoToAssemblyAsync(protoBytes);

@@ -9,6 +9,7 @@
 @using ASAP.Nats
 @using ASAP.Services
 @using Google.Protobuf
+@using LogLevel = ASAP.Models.Ui.LogLevel
 @inject INatsSessionService NatsSessions
 @inject NatsTriggerService Triggers
 @inject ISnackbar Snackbar
@@ -17,6 +18,7 @@
 @inject IDynamicProtoCompiler ProtoCompiler
 @inject IJsonMessageConverter JsonMessageConverter
 @inject IWebHostEnvironment WebHostEnv
+@inject WorkbenchStateService State
 @implements IDisposable
 
 @if (Session != null)
@@ -25,8 +27,8 @@
         <div class="d-flex align-center mb-2" style="gap:8px;">
             <MudIcon Icon="@Icons.Material.Filled.PlaylistPlay" Size="Size.Small" Color="Color.Secondary" />
             <div>
-                <div class="wb-panel-kicker">NATS 시나리오</div>
-                <div class="wb-panel-heading">수동 단계와 자동 단계를 같은 subject 벤치 안에서 운용합니다</div>
+                <div class="wb-panel-kicker">NATS</div>
+                <div class="wb-panel-heading" title="DDSSim.proto 메시지로 수동 발행과 자동 발행을 구성합니다">시나리오</div>
             </div>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@Session.ScenarioSteps.Count 단계</MudChip>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">시나리오 @BuildScenarioGroups().Count</MudChip>
@@ -35,8 +37,6 @@
                        StartIcon="@Icons.Material.Filled.Add"
                        OnClick="AddScenarioGroup">시나리오 추가</MudButton>
         </div>
-
-        <div class="wb-inline-note mb-2">시나리오마다 수동 전체 실행, 자동 단계 시작, 전체 시작을 나눠 운용할 수 있습니다. subject는 일반 NATS subject와 와일드카드 반응 조건을 그대로 사용합니다.</div>
 
         <div class="d-flex align-center mb-2" style="gap:8px;">
             <MudButton Variant="Variant.Outlined" Size="Size.Small"
@@ -72,27 +72,29 @@
                                 <MudChip T="string" Size="Size.Small" Color="@(IsScenarioAutomationRunning(group.Name) ? Color.Success : Color.Default)" Variant="Variant.Text" Class="ma-0">@(IsScenarioAutomationRunning(group.Name) ? "자동화 동작 중" : "자동화 대기")</MudChip>
                             </div>
                         </div>
-                        <div class="wb-inline-note mt-2">수동 단계 전체 실행은 manual 단계만 순서대로 발행합니다. 자동 단계 시작은 periodic, bulk, on-incoming 단계를 현재 세션에 등록합니다.</div>
                         <div class="wb-scenario-step-actions mt-2">
                             <MudButton Variant="Variant.Text" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.Add"
-                                       OnClick="@(() => AddScenarioStep(group.Name))">단계 추가</MudButton>
+                                       OnClick="@(() => AddScenarioStep(group.Name))">단계</MudButton>
                             <MudButton Variant="Variant.Outlined" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.PlayArrow"
                                        OnClick="@(() => RunScenario(group.Name))"
-                                       Disabled="@(ManualScenarioStepCountFor(group.Name) == 0 || _runningScenario)">수동 단계 전체 실행</MudButton>
+                                       title="수동 단계를 순서대로 실행합니다"
+                                       Disabled="@(ManualScenarioStepCountFor(group.Name) == 0 || _runningScenario)">수동</MudButton>
                             <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.AutoMode"
                                        OnClick="@(() => StartAutomation(group.Name))"
-                                       Disabled="@(AutomaticScenarioStepCountFor(group.Name) == 0 || _runningScenario || IsScenarioAutomationRunning(group.Name))">자동 단계 시작</MudButton>
+                                       title="주기, 다발, 수신 반응 단계를 등록합니다"
+                                       Disabled="@(AutomaticScenarioStepCountFor(group.Name) == 0 || _runningScenario || IsScenarioAutomationRunning(group.Name))">자동</MudButton>
                             <MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.PlayCircle"
                                        OnClick="@(() => StartScenarioWorkflow(group.Name))"
-                                       Disabled="@((ManualScenarioStepCountFor(group.Name) == 0 && AutomaticScenarioStepCountFor(group.Name) == 0) || _runningScenario || IsScenarioAutomationRunning(group.Name))">전체 시작</MudButton>
+                                       title="수동 단계를 실행한 뒤 자동 단계를 시작합니다"
+                                       Disabled="@((ManualScenarioStepCountFor(group.Name) == 0 && AutomaticScenarioStepCountFor(group.Name) == 0) || _runningScenario || IsScenarioAutomationRunning(group.Name))">전체</MudButton>
                             <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.Stop"
                                        OnClick="@(() => StopAutomation(group.Name))"
-                                       Disabled="@(!IsScenarioAutomationRunning(group.Name))">자동화 중지</MudButton>
+                                       Disabled="@(!IsScenarioAutomationRunning(group.Name))">중지</MudButton>
                         </div>
                         <div class="wb-scenario-list mt-2 wb-scroll" style="max-height:320px;overflow:auto;">
                             @foreach (var step in group.OrderedSteps)
@@ -107,23 +109,19 @@
                                     </div>
                                     <div class="wb-scenario-step-meta">
                                         <div>
-                                            <span class="wb-scenario-label">subject</span>
+                                            <span class="wb-scenario-label">대상</span>
                                             <span class="wb-scenario-value wb-mono">@step.Subject</span>
                                         </div>
                                         <div>
-                                            <span class="wb-scenario-label">when</span>
+                                            <span class="wb-scenario-label">조건</span>
                                             <span class="wb-scenario-value wb-preline">@ScenarioStepWhenLabel(step)</span>
-                                        </div>
-                                        <div>
-                                            <span class="wb-scenario-label">payload</span>
-                                            <span class="wb-scenario-value wb-preline">@ScenarioStepPayloadPreview(step)</span>
                                         </div>
                                     </div>
                                     <div class="wb-scenario-step-actions mt-2">
-                                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => MoveScenarioStep(step, -1))">위로</MudButton>
-                                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => MoveScenarioStep(step, 1))">아래로</MudButton>
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.KeyboardArrowUp" OnClick="@(() => MoveScenarioStep(step, -1))">위</MudButton>
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.KeyboardArrowDown" OnClick="@(() => MoveScenarioStep(step, 1))">아래</MudButton>
                                         <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => EditScenarioStep(step))">편집</MudButton>
-                                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => FireScenarioStep(step))">1회 실행</MudButton>
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Success" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="@(() => FireScenarioStep(step))">1회</MudButton>
                                         <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveScenarioStep(step))">삭제</MudButton>
                                     </div>
                                 </div>
@@ -137,115 +135,175 @@
         @if (_editingStep != null)
         {
             var editor = _editingStep;
-            <div class="wb-panel wb-panel--major wb-panel--contain pa-3 mt-3">
-                <div class="d-flex align-center mb-2" style="gap:8px;">
-                    <div>
-                        <div class="wb-panel-kicker">단계 편집</div>
-                        <div class="wb-panel-heading">@ScenarioStepDisplayName(editor)</div>
+            <div class="wb-editor-backdrop"></div>
+            <div class="wb-editor-shell">
+                <div class="wb-editor-drawer wb-panel pa-4 wb-scroll">
+                    <div class="wb-panel-head mb-3">
+                        <div>
+                            <div class="wb-panel-kicker d-flex align-center" style="gap:6px;">
+                                <span>NATS 단계 편집기</span>
+                                <MudTooltip Text="메시지 타입, subject, 실행 방식, payload, 자동 조건을 DDS 단계 편집기와 같은 방식으로 편집합니다.">
+                                    <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="cursor:help;color:var(--mud-palette-text-secondary);" />
+                                </MudTooltip>
+                            </div>
+                            <div class="wb-panel-heading">@ScenarioStepDisplayName(editor)</div>
+                        </div>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseScenarioStepEditor" />
                     </div>
-                    <MudSpacer />
-                    <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseScenarioStepEditor" />
-                </div>
 
-                <div class="wb-home-form">
-                    <MudTextField @bind-Value="editor.Name" Label="이름" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    <MudTextField @bind-Value="editor.Scenario" Label="시나리오" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    <MudCheckBox T="bool"
-                                 Value="editor.UseBridgeMessage"
-                                 ValueChanged="OnEditingBridgeModeChanged"
-                                 Label="DDSSim.proto 기반 bridge message 편집"
-                                 Disabled="@(_bridgeMessages.Count == 0)"
-                                 Color="Color.Primary" />
-                    @if (editor.UseBridgeMessage && _bridgeMessages.Count > 0)
-                    {
-                        <MudSelect T="string"
-                                   Value="@(_selectedScenarioBridgeMessageType ?? string.Empty)"
-                                   ValueChanged="OnEditingBridgeMessageTypeChanged"
-                                   Label="메시지 타입"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense">
-                            @foreach (var option in _bridgeMessages)
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="editor.Name" Label="이름"
+                                          Placeholder="@ScenarioStepDisplayName(editor)"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @if (_bridgeMessages.Count > 0)
                             {
-                                <MudSelectItem T="string" Value="@option.TypeName">@option.TypeName</MudSelectItem>
+                                <MudSelect T="string"
+                                           Label="메시지 타입"
+                                           Value="@(_selectedScenarioBridgeMessageType ?? string.Empty)"
+                                           ValueChanged="OnEditingBridgeMessageTypeChanged"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Class="wb-select wb-select--comfortable wb-select--ellipsis">
+                                    @foreach (var option in _bridgeMessages)
+                                    {
+                                        <MudSelectItem T="string" Value="@option.TypeName">@option.TypeName</MudSelectItem>
+                                    }
+                                </MudSelect>
                             }
-                        </MudSelect>
-                        <MudTextField Value="editor.Subject" Label="발행 subject" Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" />
-                    }
-                    else
-                    {
-                        <MudTextField @bind-Value="editor.Subject" Label="발행 subject" Placeholder="example.subject" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    }
-                    <MudSelect T="NatsStepMode" @bind-Value="editor.Mode" Label="모드" Variant="Variant.Outlined" Margin="Margin.Dense">
-                        <MudSelectItem Value="NatsStepMode.Manual">수동</MudSelectItem>
-                        <MudSelectItem Value="NatsStepMode.Periodic">주기</MudSelectItem>
-                        <MudSelectItem Value="NatsStepMode.Bulk">다발</MudSelectItem>
-                        <MudSelectItem Value="NatsStepMode.OnIncoming">수신-응답</MudSelectItem>
-                    </MudSelect>
-                    <MudCheckBox @bind-Value="editor.AutoEnabled" Label="자동 단계 사용" Color="Color.Success" />
-                    <MudNumericField @bind-Value="editor.RepeatCount" Label="반복 수" Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    <MudNumericField @bind-Value="editor.DelayAfterMs" Label="단계 후 지연 (ms)" Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    @if (editor.Mode == NatsStepMode.Periodic)
-                    {
-                        <MudNumericField @bind-Value="editor.IntervalMs" Label="주기 (ms)" Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    }
-                    @if (editor.Mode == NatsStepMode.Bulk)
-                    {
-                        <MudNumericField @bind-Value="editor.BulkCount" Label="개수" Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                        <MudCheckBox @bind-Value="editor.BulkParallel" Label="병렬 발행" Color="Color.Info" />
-                    }
-                    @if (editor.Mode == NatsStepMode.OnIncoming)
-                    {
-                        <MudTextField @bind-Value="editor.MatchSubject" Label="매칭 source subject" Placeholder="> 또는 telemetry.*" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                        <MudCheckBox @bind-Value="editor.BlockSelfSubjectLoop" Label="동일 source/target subject 재발행 차단" Color="Color.Warning" />
-                        <MudNumericField @bind-Value="editor.MinFireIntervalMs" Label="최소 발행 간격 (ms, 0=해제)" Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                        <MudNumericField @bind-Value="editor.MaxFiresPerMinute" Label="분당 최대 발행 수 (0=무제한)" Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    }
-                </div>
-
-                @if (editor.UseBridgeMessage && _bridgeMessages.Count > 0)
-                {
-                    <div class="d-flex align-center mt-2" style="gap:8px;">
-                        <div class="wb-inline-note">DDSSim.proto 필드를 직접 편집합니다. 필요할 때만 raw JSON 으로 전환하세요.</div>
-                        <MudSpacer />
-                        <MudButton Variant="@(_scenarioRawJsonMode ? Variant.Outlined : Variant.Filled)"
-                                   Color="Color.Primary"
-                                   Size="Size.Small"
-                                   OnClick="@(() => SetScenarioRawJsonMode(false))">컴포넌트 편집</MudButton>
-                        <MudButton Variant="@(_scenarioRawJsonMode ? Variant.Filled : Variant.Outlined)"
-                                   Color="Color.Secondary"
-                                   Size="Size.Small"
-                                   OnClick="@(() => SetScenarioRawJsonMode(true))">Raw JSON</MudButton>
-                    </div>
-                    @if (_editingSchemaFields.Count > 0 && !_scenarioRawJsonMode)
-                    {
-                        <div class="wb-panel wb-panel--contain pa-3 mt-2">
-                            @foreach (var field in _editingSchemaFields)
+                            else
                             {
-                                <div class="mb-2">
-                                    <SchemaFormField Field="field" OnChanged="OnScenarioSchemaChanged" />
+                                <MudTextField @bind-Value="editor.Subject" Label="발행 subject" Placeholder="dds.sidecar.to-dds.AirThreatInformation"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            }
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField Value="editor.Subject" Label="발행 subject" Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="@editor.UseBridgeMessage" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="editor.Scenario" Label="시나리오" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudSelect T="NatsStepMode" Value="editor.Mode" ValueChanged="@((NatsStepMode mode) => OnScenarioStepModeChanged(editor, mode))" Label="실행 방식"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                <MudSelectItem Value="NatsStepMode.Manual">수동 / 순차 실행</MudSelectItem>
+                                <MudSelectItem Value="NatsStepMode.Periodic">주기 발행</MudSelectItem>
+                                <MudSelectItem Value="NatsStepMode.Bulk">다발 발행</MudSelectItem>
+                                <MudSelectItem Value="NatsStepMode.OnIncoming">수신 반응 발행</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <div class="wb-mode-note" title="@ScenarioStepModeGuidance(editor.Mode)">
+                                @ScenarioStepModeGuidance(editor.Mode)
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="3">
+                            <MudNumericField @bind-Value="editor.RepeatCount" Label="이 단계 발행 횟수"
+                                             Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="12" sm="3">
+                            <MudNumericField @bind-Value="editor.DelayAfterMs" Label="다음 단계 전 대기(ms)"
+                                             Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+
+                        @if (editor.Mode == NatsStepMode.Periodic)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="editor.IntervalMs" Label="주기(ms)"
+                                                 Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="editor.MaxFires" Label="최대 발행 수(선택)"
+                                                 Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                        }
+                        else if (editor.Mode == NatsStepMode.Bulk)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField @bind-Value="editor.BulkCount" Label="다발 개수"
+                                                 Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                                <MudCheckBox @bind-Value="editor.BulkParallel" Label="병렬 발행" Color="Color.Warning" />
+                            </MudItem>
+                        }
+                        else if (editor.Mode == NatsStepMode.OnIncoming)
+                        {
+                            <MudItem xs="12" sm="4">
+                                <MudTextField @bind-Value="editor.MatchSubject" Label="매칭 source subject"
+                                              Placeholder="> 또는 telemetry.*" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudNumericField @bind-Value="editor.MinFireIntervalMs" Label="최소 발행 간격(ms)"
+                                                 Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudNumericField @bind-Value="editor.MaxFiresPerMinute" Label="분당 최대 발행 수"
+                                                 Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudCheckBox @bind-Value="editor.BlockSelfSubjectLoop" Label="동일 source/target subject 재발행 차단" Color="Color.Warning" />
+                            </MudItem>
+                        }
+
+                        <MudItem xs="12">
+                            <div class="d-flex flex-wrap align-center" style="gap:8px;">
+                                <div class="d-flex align-center" style="gap:6px;min-width:0;">
+                                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);margin:0;">Payload</MudText>
+                                    <MudTooltip Text="NATS 단계 payload는 DDSSim.proto 필드 입력이나 JSON 원문으로 편집합니다.">
+                                        <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="cursor:help;color:var(--mud-palette-text-secondary);" />
+                                    </MudTooltip>
+                                </div>
+                                <MudSpacer />
+                                @if (_editingSchemaFields.Count > 0)
+                                {
+                                    <MudToggleGroup T="bool" Value="_scenarioRawJsonMode" ValueChanged="SetScenarioRawJsonMode"
+                                                    Color="Color.Primary" Size="Size.Small" CheckMark="false"
+                                                    SelectionMode="SelectionMode.SingleSelection">
+                                        <MudToggleItem Value="false" Text="필드" />
+                                        <MudToggleItem Value="true" Text="JSON" />
+                                    </MudToggleGroup>
+                                }
+                            </div>
+                            @if (!_scenarioRawJsonMode && _editingSchemaFields.Count > 0)
+                            {
+                                <div class="wb-scroll mt-2" style="max-height:44vh;overflow-y:auto;">
+                                    @foreach (var field in _editingSchemaFields)
+                                    {
+                                        <div class="mb-2">
+                                            <SchemaFormField Field="field" OnChanged="OnScenarioSchemaChanged" />
+                                        </div>
+                                    }
                                 </div>
                             }
-                        </div>
-                    }
-                    else
-                    {
-                        <MudTextField @bind-Value="editor.PayloadText" Label="Payload JSON" Lines="10" FullWidth="true" Class="wb-mono mt-2" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    }
-                    @if (!string.IsNullOrWhiteSpace(_bridgeLoadError))
-                    {
-                        <div class="wb-inline-note mt-2" style="color:var(--mud-palette-warning);">@_bridgeLoadError</div>
-                    }
-                }
-                else
-                {
-                    <MudTextField @bind-Value="editor.PayloadText" Label="Payload" Lines="10" FullWidth="true" Class="wb-mono mt-2" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                }
+                            else
+                            {
+                                <MudTextField @bind-Value="editor.PayloadText" Lines="12" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" Label="메시지 Payload JSON" FullWidth="true"
+                                              Class="mt-2 wb-mono" Style="font-size:.8rem;" />
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_bridgeLoadError))
+                            {
+                                <div class="wb-inline-note mt-2" style="color:var(--mud-palette-warning);">@_bridgeLoadError</div>
+                            }
+                        </MudItem>
 
-                <div class="d-flex align-center mt-3" style="gap:8px;">
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => FireScenarioStep(editor))">지금 1회 발행</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="SaveScenarioStepEditor">저장</MudButton>
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="CloseScenarioStepEditor">닫기</MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="DeleteEditingScenarioStep">삭제</MudButton>
+                        <MudItem xs="12" Class="d-flex" Style="gap:8px;">
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                                       OnClick="@(() => FireScenarioStep(editor))">지금 1회 발행</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="SaveScenarioStepEditor">저장</MudButton>
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                       OnClick="CloseScenarioStepEditor">닫기</MudButton>
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Delete"
+                                       OnClick="@(() => DeleteEditingScenarioStep())">삭제</MudButton>
+                        </MudItem>
+                    </MudGrid>
                 </div>
             </div>
         }
@@ -287,7 +345,7 @@
             Scenario = string.IsNullOrWhiteSpace(scenario) ? CreateScenarioName() : scenario.Trim(),
             UseBridgeMessage = selectedBridge != null,
             BridgeMessageType = selectedBridge?.TypeName,
-            Subject = selectedBridge != null ? BuildBridgeSubject(selectedBridge.TypeName) : "example.subject",
+            Subject = selectedBridge != null ? BuildBridgeSubject(selectedBridge.TypeName) : "dds.sidecar.to-dds.AirThreatInformation",
             PayloadText = "{}",
             AutoEnabled = false,
         };
@@ -307,15 +365,32 @@
         if (_editingStep == null)
             return;
 
+        SyncScenarioStepAutomation(_editingStep);
         await PrepareEditingStepAsync(_editingStep);
 
-        Snackbar.Add($"단계 저장: {ScenarioStepDisplayName(_editingStep)}", Severity.Success);
         _editingStep = null;
     }
 
     private void CloseScenarioStepEditor()
     {
         _editingStep = null;
+    }
+
+    private void OnScenarioStepModeChanged(NatsScenarioStep step, NatsStepMode mode)
+    {
+        step.Mode = mode;
+        SyncScenarioStepAutomation(step);
+    }
+
+    private static void SyncScenarioStepAutomation(NatsScenarioStep step)
+    {
+        step.AutoEnabled = step.Mode != NatsStepMode.Manual;
+
+        if (step.Mode == NatsStepMode.Periodic && step.IntervalMs <= 0)
+            step.IntervalMs = 1000;
+
+        if (step.Mode == NatsStepMode.Bulk && step.BulkCount <= 0)
+            step.BulkCount = 1;
     }
 
     private void DeleteEditingScenarioStep()
@@ -369,10 +444,10 @@
         try
         {
             await ExecuteStepAsync(step);
-            Snackbar.Add($"단계 발행 완료: {ScenarioStepDisplayName(step)}", Severity.Success);
         }
         catch (Exception ex)
         {
+            State.AddLog($"NATS 단계 발행 실패: {ex.Message}", LogLevel.Error);
             Snackbar.Add($"단계 발행 실패: {ex.Message}", Severity.Error);
         }
     }
@@ -392,10 +467,10 @@
             foreach (var step in manualSteps)
                 await ExecuteStepAsync(step);
 
-            Snackbar.Add($"NATS 시나리오 실행 완료: {scenario}", Severity.Success);
         }
         catch (Exception ex)
         {
+            State.AddLog($"NATS 시나리오 실행 실패: {ex.Message}", LogLevel.Error);
             Snackbar.Add($"NATS 시나리오 실행 실패: {ex.Message}", Severity.Error);
         }
         finally
@@ -423,8 +498,7 @@
 
         var steps = Session.ScenarioSteps
             .Where(step => string.Equals(NormalizeScenarioName(step.Scenario), NormalizeScenarioName(scenario), StringComparison.OrdinalIgnoreCase)
-                && step.Mode != NatsStepMode.Manual
-                && step.AutoEnabled)
+                && step.Mode != NatsStepMode.Manual)
             .ToList();
 
         foreach (var step in steps)
@@ -458,7 +532,7 @@
             });
         }
 
-        Snackbar.Add($"NATS 자동 단계 시작: {scenario}", Severity.Success);
+        State.AddLog($"NATS 자동화 시작: {scenario}", LogLevel.Info);
     }
 
     private void StopAutomation(string scenario)
@@ -474,7 +548,7 @@
         foreach (var triggerId in triggerIds)
             Triggers.Remove(triggerId);
 
-        Snackbar.Add($"NATS 자동화 중지: {scenario}", Severity.Info);
+        State.AddLog($"NATS 자동화 중지: {scenario}", LogLevel.Info);
     }
 
     private async Task ExecuteStepAsync(NatsScenarioStep step)
@@ -513,7 +587,7 @@
 
         var json = JsonSerializer.Serialize(new ScenarioExportPayload { Steps = Session.ScenarioSteps.ToList() }, new JsonSerializerOptions { WriteIndented = true });
         await JS.InvokeVoidAsync("workbench.downloadText", $"nats-scenarios-{SanitizeFileName(Session.Name)}.json", json, "application/json");
-        Snackbar.Add($"NATS 시나리오 내보내기 완료: {Session.ScenarioSteps.Count} step", Severity.Success);
+        State.AddLog($"NATS 시나리오 내보내기: {Session.ScenarioSteps.Count} step", LogLevel.Info);
     }
 
     private async Task ImportScenarioJson(IBrowserFile? file)
@@ -539,7 +613,7 @@
                 RepeatCount = step.RepeatCount,
                 DelayAfterMs = step.DelayAfterMs,
                 Mode = step.Mode,
-                AutoEnabled = step.AutoEnabled,
+                AutoEnabled = step.Mode != NatsStepMode.Manual || step.AutoEnabled,
                 IntervalMs = step.IntervalMs,
                 MaxFires = step.MaxFires,
                 BulkCount = step.BulkCount,
@@ -552,14 +626,14 @@
             .ToList();
 
         _editingStep = null;
-        Snackbar.Add($"NATS 시나리오 불러오기 완료: {Session.ScenarioSteps.Count} step", Severity.Success);
+        State.AddLog($"NATS 시나리오 불러오기: {Session.ScenarioSteps.Count} step", LogLevel.Info);
     }
 
     private int ManualScenarioStepCountFor(string scenario)
         => Session?.ScenarioSteps.Count(step => string.Equals(NormalizeScenarioName(step.Scenario), NormalizeScenarioName(scenario), StringComparison.OrdinalIgnoreCase) && step.Mode == NatsStepMode.Manual) ?? 0;
 
     private int AutomaticScenarioStepCountFor(string scenario)
-        => Session?.ScenarioSteps.Count(step => string.Equals(NormalizeScenarioName(step.Scenario), NormalizeScenarioName(scenario), StringComparison.OrdinalIgnoreCase) && step.Mode != NatsStepMode.Manual && step.AutoEnabled) ?? 0;
+        => Session?.ScenarioSteps.Count(step => string.Equals(NormalizeScenarioName(step.Scenario), NormalizeScenarioName(scenario), StringComparison.OrdinalIgnoreCase) && step.Mode != NatsStepMode.Manual) ?? 0;
 
     private bool IsScenarioAutomationRunning(string scenario)
         => Session != null && Triggers.Snapshot(Session.SessionId)
@@ -574,8 +648,6 @@
     {
         if (step.Mode == NatsStepMode.Manual)
             return "수동";
-        if (!step.AutoEnabled)
-            return "자동 꺼짐";
         return IsScenarioAutomationRunning(step.Scenario) ? "자동화 동작 중" : "자동 대기";
     }
 
@@ -583,7 +655,7 @@
     {
         if (step.Mode == NatsStepMode.Manual)
             return Color.Info;
-        return step.AutoEnabled ? Color.Success : Color.Default;
+        return Color.Success;
     }
 
     private static string ScenarioStepModeLabel(NatsScenarioStep step) => step.Mode switch
@@ -607,6 +679,15 @@
         };
     }
 
+    private static string ScenarioStepModeGuidance(NatsStepMode mode) => mode switch
+    {
+        NatsStepMode.Manual => "이 단계는 수동 단계 전체 실행과 전체 시작 앞부분에 포함됩니다. 자동 단계 시작만으로는 움직이지 않습니다.",
+        NatsStepMode.Periodic => "이 단계는 자동 단계 시작 또는 전체 시작 뒤에 주기적으로 발행됩니다. 수동 단계 전체 실행에는 들어가지 않습니다.",
+        NatsStepMode.Bulk => "이 단계는 자동 단계 시작 또는 전체 시작 뒤에 다발 발행 규칙으로 움직입니다. 수동 단계 전체 실행에는 들어가지 않습니다.",
+        NatsStepMode.OnIncoming => "이 단계는 자동화 시작 뒤 매칭 subject 수신을 기다렸다가 반응 발행합니다. 수동 단계 전체 실행에는 들어가지 않습니다.",
+        _ => string.Empty,
+    };
+
     private static string ScenarioStepPayloadPreview(NatsScenarioStep step)
     {
         if (string.IsNullOrWhiteSpace(step.PayloadText))
@@ -619,11 +700,11 @@
     {
         try
         {
-            var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+            var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "grpc", "DDSSim.proto");
             var protoBytes = await File.ReadAllBytesAsync(path);
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
 
-            _bridgeSchemaAssembly = null;
+            _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
 
             var next = services
                 .SelectMany(service => service.Methods)
@@ -645,7 +726,7 @@
         catch (Exception ex)
         {
             _bridgeSchemaAssembly = null;
-            _bridgeLoadError = $"nats/DDSSim.proto 로드 실패: {ex.Message}";
+            _bridgeLoadError = $"grpc/DDSSim.proto 로드 실패: {ex.Message}";
         }
     }
 
@@ -764,7 +845,7 @@
         if (_bridgeSchemaAssembly != null)
             return;
 
-        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "grpc", "DDSSim.proto");
         var protoBytes = await File.ReadAllBytesAsync(path);
         _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
     }

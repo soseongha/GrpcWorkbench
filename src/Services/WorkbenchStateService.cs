@@ -69,7 +69,7 @@ public class WorkbenchStateService : IDisposable
     private const int MaxStreamRecv = 500;
     private const int MaxOutboundEntries = 5000;
     private const int MaxRpcAggregates = 256;
-    private static readonly TimeSpan IncomingUiRefreshInterval = TimeSpan.FromMilliseconds(8);
+    private static readonly TimeSpan IncomingUiRefreshInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan ActiveDisplayHold = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan ActiveStaleTimeout = TimeSpan.FromSeconds(8);
     private static readonly long IncomingUiRefreshIntervalMs = (long)IncomingUiRefreshInterval.TotalMilliseconds;

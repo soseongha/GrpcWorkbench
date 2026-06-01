@@ -1,5 +1,6 @@
 ﻿@using System.Text
 @using System.Text.Json
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @using ASAP.Grpc
 @using ASAP.Models.Grpc
 @using ASAP.Models.Nats
@@ -7,12 +8,15 @@
 @using ASAP.Models.Ui
 @using ASAP.Nats
 @using Google.Protobuf
+@using ASAP.Services
+@using LogLevel = ASAP.Models.Ui.LogLevel
 @inject INatsSessionService NatsSessions
 @inject IProtoLoader ProtoLoader
 @inject IDynamicProtoCompiler ProtoCompiler
 @inject IJsonMessageConverter JsonMessageConverter
 @inject IWebHostEnvironment WebHostEnv
 @inject ISnackbar Snackbar
+@inject WorkbenchStateService State
 @implements IDisposable
 
 @if (Session == null)
@@ -21,13 +25,15 @@
 }
 else
 {
-    var subscriptions = NatsSessions.SnapshotSubscriptions(Session.SessionId);
-    var inbound = NatsSessions.SnapshotInbound(Session.SessionId, 100).OrderByDescending(x => x.Timestamp).ToList();
-    var outbound = NatsSessions.SnapshotOutbound(Session.SessionId, 100).OrderByDescending(x => x.Timestamp).ToList();
-    var inboundSubjects = GetInboundSubjects(subscriptions, inbound);
-    var outboundSubjects = GetOutboundSubjects(outbound);
+    EnsureNatsCache();
+    var subscriptions = _cachedSubscriptions;
+    var inbound = _cachedInbound;
+    var outbound = _cachedOutbound;
+    var inboundSubjects = _cachedInboundSubjects;
+    var outboundSubjects = _cachedOutboundSubjects;
     var selectedInboundSubject = ResolveSelectedSubject(inboundSubjects, _selectedInboundSubject);
     var selectedOutboundSubject = ResolveSelectedSubject(outboundSubjects, _selectedOutboundSubject);
+    var stoppableInboundSubject = ResolveStoppableSubscription(subscriptions, selectedInboundSubject);
     var selectedInboundSubscription = string.IsNullOrWhiteSpace(selectedInboundSubject)
         ? null
         : subscriptions.FirstOrDefault(x => x.Subject == selectedInboundSubject);
@@ -44,7 +50,7 @@ else
         <div class="d-flex align-center flex-wrap mb-2" style="gap:8px;">
             <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Small" Color="Color.Success" />
             <div>
-                <div class="wb-panel-kicker">NATS 세션</div>
+                <div class="wb-panel-kicker">NATS</div>
                 <div class="wb-panel-heading">@Session.Name · @Session.Url</div>
             </div>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">구독 @subscriptions.Count</MudChip>
@@ -55,8 +61,8 @@ else
         <div class="wb-subpanel mb-3 pa-3">
             <div class="d-flex align-center flex-wrap" style="gap:8px;">
                 <div>
-                    <div class="wb-panel-kicker">작업 요약</div>
-                    <div class="wb-panel-heading">브로커, 활성 subject, 최근 흐름을 먼저 보여줍니다</div>
+                    <div class="wb-panel-kicker">요약</div>
+                    <div class="wb-panel-heading" title="브로커, 활성 subject, 최근 흐름을 먼저 보여줍니다">상태</div>
                 </div>
                 <MudSpacer />
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">세션 @Session.SessionId[..4]</MudChip>
@@ -81,8 +87,8 @@ else
                 </div>
             </div>
 
-            <div class="wb-inline-note mt-3">
-                NATS 화면은 수신/송신 기록 확인에 집중하고, 실제 송신 내용 작성과 반복 실행은 아래 NATS 자동화에서 다룹니다. 상세창에서는 bridge protobuf를 JSON으로 복원해 보고, 그 외 payload는 JSON, base64, hex로 확인할 수 있습니다.
+            <div class="wb-inline-note mt-3" title="NATS 화면은 수신/송신 기록 확인에 집중하고, 실제 송신 내용 작성과 반복 실행은 아래 NATS 자동화에서 다룹니다. 상세창에서는 bridge protobuf를 JSON으로 복원해 보고, 그 외 payload는 JSON, base64, hex로 확인할 수 있습니다.">
+                proto: DDSSim
             </div>
         </div>
     </div>
@@ -94,17 +100,22 @@ else
                     <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Info" />
                     <div>
                         <div class="wb-panel-kicker">수신</div>
-                        <div class="wb-panel-heading">구독 subject와 들어온 메시지를 함께 봅니다</div>
+                        <div class="wb-panel-heading" title="구독 subject와 들어온 메시지를 함께 봅니다">메시지</div>
                     </div>
                     <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text" Class="ma-0">@subscriptions.Count 활성</MudChip>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@inbound.Count 메시지</MudChip>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                               Disabled="@(inbound.Count == 0)"
+                               OnClick="ClearInboundMessages"
+                               StartIcon="@Icons.Material.Filled.DeleteSweep">초기화</MudButton>
                 </div>
 
                 <div class="wb-subpanel mb-3 pa-3">
                     <div class="d-flex align-center mb-2" style="gap:8px;">
                         <div>
-                            <div class="wb-panel-kicker">구독 subject 관리</div>
-                            <div class="wb-panel-heading">exact subject뿐 아니라 `*`, `>` 와일드카드도 그대로 구독할 수 있습니다</div>
+                            <div class="wb-panel-kicker">구독</div>
+                            <div class="wb-panel-heading" title="정의된 DDSSim 메시지 중 수신할 항목을 고릅니다">메시지</div>
                         </div>
                         <MudSpacer />
                         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
@@ -112,28 +123,36 @@ else
                             구독 시작
                         </MudButton>
                         <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
-                                   Disabled="@(selectedInboundSubscription == null)"
+                                   Disabled="@(stoppableInboundSubject == null)"
                                    OnClick="@(() => RemoveSelectedSubscription())"
                                    StartIcon="@Icons.Material.Filled.Stop">
                             선택 중지
                         </MudButton>
                     </div>
 
-                    <MudTextField @bind-Value="_subscribeSubject" Label="구독 subject" Placeholder="> 또는 telemetry.*"
-                                  Variant="Variant.Outlined" Margin="Margin.Dense" FullWidth="true" />
-
-                    <div class="d-flex flex-wrap mt-2" style="gap:8px;">
-                        @foreach (var preset in SubscriptionPresets)
-                        {
-                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
-                                     Color="@(_subscribeSubject == preset ? Color.Info : Color.Default)"
-                                     OnClick="@(() => ApplySubscriptionPreset(preset))">
-                                @preset
-                            </MudChip>
-                        }
-                    </div>
-
-                    <div class="wb-inline-note mt-2">예: `>` 는 전체, `telemetry.*` 는 한 단계 subject, `foo.bar` 는 exact subject입니다.</div>
+                    @if (_bridgeMessages.Count > 0)
+                    {
+                        <MudSelect T="string"
+                                   Value="@_selectedSubscribeMessageType"
+                                   ValueChanged="OnSubscribeMessageTypeChanged"
+                                   Label="구독 메시지"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Dense="true"
+                                   FullWidth="true">
+                            @foreach (var option in _bridgeMessages)
+                            {
+                                <MudSelectItem T="string" Value="@option.TypeName">@option.TypeName</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <div class="wb-inline-note mt-2">subject: @_subscribeSubject</div>
+                    }
+                    else
+                    {
+                        <MudTextField @bind-Value="_subscribeSubject" Label="구독 subject" Placeholder="dds.sidecar.to-nats.AirThreatInformation"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" FullWidth="true" />
+                        <div class="wb-inline-note mt-2" title="메시지 정의를 읽지 못하면 subject를 직접 입력해 구독합니다.">직접 입력</div>
+                    }
 
                     <div class="d-flex flex-wrap mt-3" style="gap:8px;">
                         @if (subscriptions.Count == 0)
@@ -145,7 +164,7 @@ else
                             @foreach (var subscription in subscriptions)
                             {
                                 <MudChip T="string" Size="Size.Small"
-                                         Color="@(subscription.Subject == selectedInboundSubject ? Color.Info : Color.Default)"
+                                         Color="Color.Success"
                                          Variant="Variant.Outlined"
                                          OnClick="@(() => SelectInboundSubject(subscription.Subject))"
                                          OnClose="@(() => RemoveSubscription(subscription.Subject))">
@@ -164,9 +183,10 @@ else
                 {
                     <div class="wb-message-split">
                         <div class="wb-scroll wb-message-list">
-                            @foreach (var subscription in subscriptions)
-                            {
-                                var count = inbound.Count(x => SubjectMatchesPattern(subscription.Subject, x.Subject));
+                            <Virtualize TItem="NatsSubscriptionInfo" Items="@subscriptions" Context="subscription" ItemSize="62">
+                                @{
+                                    var count = GetInboundCount(subscription.Subject);
+                                }
                                 <button type="button"
                                         class="wb-call-row @(selectedInboundSubject == subscription.Subject ? "is-selected" : null)"
                                         @onclick="@(() => SelectInboundSubject(subscription.Subject))"
@@ -180,7 +200,7 @@ else
                                         <span>@(count == 0 ? "대기 중" : "메시지 있음")</span>
                                     </div>
                                 </button>
-                            }
+                            </Virtualize>
                         </div>
 
                         <div class="wb-message-content">
@@ -195,11 +215,10 @@ else
                             }
                             else
                             {
-                                <div class="wb-inline-note mb-2" title="@BuildSubjectTooltip(selectedInboundSubscription.Subject)">subject: @FormatSubjectForList(selectedInboundSubscription.Subject) · 최근 @selectedInboundMessages.Count 개 메시지</div>
+                                <div class="wb-inline-note mb-2" title="@BuildSubjectTooltip(selectedInboundSubscription.Subject)">subject: @FormatSubjectForList(selectedInboundSubscription.Subject) · @selectedInboundMessages.Count 개 메시지</div>
                                 <div class="wb-message-split">
                                     <div class="wb-scroll wb-message-list">
-                                        @foreach (var message in selectedInboundMessages)
-                                        {
+                                        <Virtualize TItem="NatsMessageEntry" Items="@selectedInboundMessages" Context="message" ItemSize="38">
                                             <button type="button"
                                                     class="wb-call-row wb-message-row @(selectedInboundMessage?.MessageId == message.MessageId ? "is-selected" : null)"
                                                     @onclick="@(() => _selectedInboundMessageId = message.MessageId)">
@@ -208,7 +227,7 @@ else
                                                     <span>@message.PayloadSize bytes</span>
                                                 </div>
                                             </button>
-                                        }
+                                        </Virtualize>
                                     </div>
                                     <div class="wb-message-content">
                                         @if (selectedInboundMessage != null)
@@ -219,13 +238,13 @@ else
                                                             Color="Color.Primary" Size="Size.Small" CheckMark="false"
                                                             SelectionMode="SelectionMode.SingleSelection">
                                                 <MudToggleItem Value="NatsPayloadViewMode.Auto" Text="자동" />
-                                                <MudToggleItem Value="NatsPayloadViewMode.Text" Text="텍스트" />
+                                                <MudToggleItem Value="NatsPayloadViewMode.Text" Text="raw" />
                                                 <MudToggleItem Value="NatsPayloadViewMode.Base64" Text="base64" />
                                                 <MudToggleItem Value="NatsPayloadViewMode.Hex" Text="hex" />
                                             </MudToggleGroup>
                                             @if (ResolvePayloadJson(selectedInboundMessage, _inboundPayloadViewMode) is string inboundJson)
                                             {
-                                                <JsonDataView Json="@inboundJson" />
+                                                <JsonDataView Json="@inboundJson" AutoExpandDepth="3" />
                                             }
                                             else
                                             {
@@ -247,17 +266,19 @@ else
                     <MudIcon Icon="@Icons.Material.Filled.NorthEast" Size="Size.Small" Color="Color.Primary" />
                     <div>
                         <div class="wb-panel-kicker">송신</div>
-                        <div class="wb-panel-heading">자동화와 시나리오가 보낸 payload를 추적합니다</div>
+                        <div class="wb-panel-heading" title="자동화와 시나리오가 보낸 payload를 추적합니다">기록</div>
                     </div>
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@outbound.Count 메시지</MudChip>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                               Disabled="@(outbound.Count == 0)"
+                               OnClick="ClearOutboundMessages"
+                               StartIcon="@Icons.Material.Filled.DeleteSweep">초기화</MudButton>
                 </div>
 
                 <div class="wb-subpanel mb-3 pa-3">
-                    <div class="wb-panel-kicker">송신 기록</div>
-                    <div class="wb-panel-heading">송신 내용 작성은 아래 NATS 자동화에서 하고, 이 영역은 실제로 발행된 결과만 보여줍니다</div>
-                    <div class="wb-inline-note mt-3">
-                        수동 발행, 반복 발행, 수신-응답 규칙 편집은 아래 시나리오/자동화 패널에서 구성하세요. 이 영역에서는 실제로 전송된 subject와 payload 기록만 확인합니다.
-                    </div>
+                    <div class="wb-panel-kicker">이력</div>
+                    <div class="wb-panel-heading" title="송신 내용 작성은 아래 NATS 자동화에서 하고, 이 영역은 실제로 발행된 결과만 보여줍니다">송신</div>
                     @if (!string.IsNullOrWhiteSpace(_bridgeLoadError))
                     {
                         <div class="wb-inline-note mt-2">@_bridgeLoadError</div>
@@ -272,10 +293,11 @@ else
                 {
                     <div class="wb-message-split">
                         <div class="wb-scroll wb-message-list">
-                            @foreach (var subject in outboundSubjects)
-                            {
-                                var count = outbound.Count(x => x.Subject == subject);
-                                var last = outbound.First(x => x.Subject == subject);
+                            <Virtualize TItem="string" Items="@outboundSubjects" Context="subject" ItemSize="62">
+                                @{
+                                    var count = outbound.Count(x => x.Subject == subject);
+                                    var last = outbound.First(x => x.Subject == subject);
+                                }
                                 <button type="button"
                                         class="wb-call-row @(selectedOutboundSubject == subject ? "is-selected" : null)"
                                         @onclick="@(() => SelectOutboundSubject(subject))"
@@ -289,7 +311,7 @@ else
                                         <span>최근 @last.PayloadSize bytes</span>
                                     </div>
                                 </button>
-                            }
+                            </Virtualize>
                         </div>
 
                         <div class="wb-message-content">
@@ -299,11 +321,10 @@ else
                             }
                             else
                             {
-                                <div class="wb-inline-note mb-2" title="@BuildSubjectTooltip(selectedOutboundMessage.Subject)">subject: @FormatSubjectForList(selectedOutboundMessage.Subject) · 최근 @selectedOutboundMessages.Count 개 송신</div>
+                                <div class="wb-inline-note mb-2" title="@BuildSubjectTooltip(selectedOutboundMessage.Subject)">subject: @FormatSubjectForList(selectedOutboundMessage.Subject) · @selectedOutboundMessages.Count 개 송신</div>
                                 <div class="wb-message-split">
                                     <div class="wb-scroll wb-message-list">
-                                        @foreach (var message in selectedOutboundMessages)
-                                        {
+                                        <Virtualize TItem="NatsMessageEntry" Items="@selectedOutboundMessages" Context="message" ItemSize="38">
                                             <button type="button"
                                                     class="wb-call-row wb-message-row @(selectedOutboundMessage.MessageId == message.MessageId ? "is-selected" : null)"
                                                     @onclick="@(() => _selectedOutboundMessageId = message.MessageId)">
@@ -312,7 +333,7 @@ else
                                                     <span>@message.PayloadSize bytes</span>
                                                 </div>
                                             </button>
-                                        }
+                                        </Virtualize>
                                     </div>
                                     <div class="wb-message-content">
                                         <div class="wb-inline-note mb-2">@FormatMessageMeta(selectedOutboundMessage)</div>
@@ -321,13 +342,13 @@ else
                                                         Color="Color.Primary" Size="Size.Small" CheckMark="false"
                                                         SelectionMode="SelectionMode.SingleSelection">
                                             <MudToggleItem Value="NatsPayloadViewMode.Auto" Text="자동" />
-                                            <MudToggleItem Value="NatsPayloadViewMode.Text" Text="텍스트" />
+                                            <MudToggleItem Value="NatsPayloadViewMode.Text" Text="raw" />
                                             <MudToggleItem Value="NatsPayloadViewMode.Base64" Text="base64" />
                                             <MudToggleItem Value="NatsPayloadViewMode.Hex" Text="hex" />
                                         </MudToggleGroup>
                                         @if (ResolvePayloadJson(selectedOutboundMessage, _outboundPayloadViewMode) is string outboundJson)
                                         {
-                                            <JsonDataView Json="@outboundJson" />
+                                            <JsonDataView Json="@outboundJson" AutoExpandDepth="3" />
                                         }
                                         else
                                         {
@@ -347,13 +368,12 @@ else
                 <div class="d-flex align-center mb-2" style="gap:8px;">
                     <MudIcon Icon="@Icons.Material.Filled.AutoMode" Size="Size.Small" Color="Color.Primary" />
                     <div>
-                        <div class="wb-panel-kicker">NATS 자동화</div>
-                        <div class="wb-panel-heading">DDS처럼 시나리오 단계와 자동 실행을 한 세션 안에서 함께 구성합니다</div>
+                        <div class="wb-panel-kicker">NATS</div>
+                        <div class="wb-panel-heading" title="DDSSim.proto 메시지로 발행 단계와 자동 실행을 구성합니다">자동화</div>
                     </div>
                 </div>
 
                 <NatsScenarioPanel Session="Session" Embedded="true" />
-                <NatsTriggerPanel Session="Session" Embedded="true" />
             </div>
         </MudItem>
     </MudGrid>
@@ -382,6 +402,7 @@ else
     private string _subscribeSubject = string.Empty;
     private string _publishSubject = string.Empty;
     private string _publishPayload = "{}";
+    private string? _selectedSubscribeMessageType;
     private string? _selectedInboundSubject;
     private string? _selectedOutboundSubject;
     private string? _selectedInboundMessageId;
@@ -395,12 +416,20 @@ else
     private bool _publishRawJsonMode;
     private NatsPayloadViewMode _inboundPayloadViewMode;
     private NatsPayloadViewMode _outboundPayloadViewMode;
-
-    private static readonly string[] SubscriptionPresets = [">", "dds.sidecar.to-nats.>", "dds.sidecar.to-dds.>", "telemetry.*", "events.>"];
+    private string? _cachedSessionId;
+    private long _cachedSubscriptionsVersion = -1;
+    private long _cachedInboundVersion = -1;
+    private long _cachedOutboundVersion = -1;
+    private List<NatsSubscriptionInfo> _cachedSubscriptions = [];
+    private List<NatsMessageEntry> _cachedInbound = [];
+    private List<NatsMessageEntry> _cachedOutbound = [];
+    private List<string> _cachedInboundSubjects = [];
+    private List<string> _cachedOutboundSubjects = [];
+    private Dictionary<string, int> _cachedInboundExactCounts = new(StringComparer.Ordinal);
 
     protected override void OnInitialized()
     {
-        _uiTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+        _uiTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
         _ = Task.Run(async () =>
         {
             try
@@ -431,22 +460,26 @@ else
 
         try
         {
-            await NatsSessions.StartSubscriptionAsync(Session.SessionId, _subscribeSubject);
-            Snackbar.Add($"구독 시작: {_subscribeSubject}", Severity.Success);
-            _publishSubject = string.IsNullOrWhiteSpace(_publishSubject) ? _subscribeSubject : _publishSubject;
-            _selectedInboundSubject = _subscribeSubject.Trim();
+            var subject = _subscribeSubject.Trim();
+            await NatsSessions.StartSubscriptionAsync(Session.SessionId, subject);
+            State.AddLog($"NATS 구독 시작: {subject}", LogLevel.Info);
+            _publishSubject = string.IsNullOrWhiteSpace(_publishSubject) ? subject : _publishSubject;
+            _selectedInboundSubject = subject;
             _selectedInboundMessageId = null;
-            _subscribeSubject = string.Empty;
+            _subscribeSubject = subject;
         }
         catch (Exception ex)
         {
+            State.AddLog($"NATS 오류: {ex.Message}", LogLevel.Error);
             Snackbar.Add(ex.Message, Severity.Error);
         }
     }
 
-    private void ApplySubscriptionPreset(string subject)
+    private Task OnSubscribeMessageTypeChanged(string typeName)
     {
-        _subscribeSubject = subject;
+        _selectedSubscribeMessageType = typeName;
+        _subscribeSubject = BuildBridgeSubscribeSubject(typeName);
+        return Task.CompletedTask;
     }
 
     private async Task RemoveSubscription(string subject)
@@ -461,11 +494,14 @@ else
             _selectedInboundMessageId = null;
         }
 
-        Snackbar.Add($"구독 중지: {subject}", Severity.Info);
+        State.AddLog($"NATS 구독 중지: {subject}", LogLevel.Info);
     }
 
     private Task RemoveSelectedSubscription()
-        => string.IsNullOrWhiteSpace(_selectedInboundSubject) ? Task.CompletedTask : RemoveSubscription(_selectedInboundSubject);
+    {
+        var subject = ResolveStoppableSubscription(_cachedSubscriptions, _selectedInboundSubject);
+        return subject == null ? Task.CompletedTask : RemoveSubscription(subject);
+    }
 
     private async Task Publish()
     {
@@ -494,10 +530,10 @@ else
 
             _selectedOutboundSubject = _publishSubject.Trim();
             _selectedOutboundMessageId = null;
-            Snackbar.Add($"발행 완료: {_publishSubject}", Severity.Success);
         }
         catch (Exception ex)
         {
+            State.AddLog($"NATS 발행 실패: {ex.Message}", LogLevel.Error);
             Snackbar.Add(ex.Message, Severity.Error);
         }
     }
@@ -513,6 +549,114 @@ else
         _selectedOutboundSubject = subject;
         _selectedOutboundMessageId = null;
     }
+
+    private void ClearInboundMessages()
+    {
+        if (Session == null)
+            return;
+
+        NatsSessions.ClearInbound(Session.SessionId);
+        _selectedInboundMessageId = null;
+        _cachedInboundVersion = -1;
+        State.AddLog($"NATS 수신 기록 초기화: {Session.Name}", LogLevel.Info);
+    }
+
+    private void ClearOutboundMessages()
+    {
+        if (Session == null)
+            return;
+
+        NatsSessions.ClearOutbound(Session.SessionId);
+        _selectedOutboundSubject = null;
+        _selectedOutboundMessageId = null;
+        _cachedOutboundVersion = -1;
+        State.AddLog($"NATS 송신 기록 초기화: {Session.Name}", LogLevel.Info);
+    }
+
+    private void EnsureNatsCache()
+    {
+        if (Session == null)
+        {
+            ResetNatsCache();
+            return;
+        }
+
+        if (!string.Equals(_cachedSessionId, Session.SessionId, StringComparison.Ordinal))
+        {
+            ResetNatsCache();
+            _cachedSessionId = Session.SessionId;
+        }
+
+        var versions = NatsSessions.GetVersions(Session.SessionId);
+        var subjectsDirty = false;
+
+        if (_cachedSubscriptionsVersion != versions.Subscriptions)
+        {
+            _cachedSubscriptions = NatsSessions.SnapshotSubscriptions(Session.SessionId).ToList();
+            _cachedSubscriptionsVersion = versions.Subscriptions;
+            subjectsDirty = true;
+        }
+
+        if (_cachedInboundVersion != versions.Inbound)
+        {
+            _cachedInbound = NatsSessions.SnapshotInbound(Session.SessionId).ToList();
+            _cachedInbound.Reverse();
+            _cachedInboundExactCounts = BuildExactSubjectCounts(_cachedInbound);
+            _cachedInboundVersion = versions.Inbound;
+            subjectsDirty = true;
+        }
+
+        if (subjectsDirty)
+            _cachedInboundSubjects = GetInboundSubjects(_cachedSubscriptions, _cachedInbound);
+
+        if (_cachedOutboundVersion != versions.Outbound)
+        {
+            _cachedOutbound = NatsSessions.SnapshotOutbound(Session.SessionId).ToList();
+            _cachedOutbound.Reverse();
+            _cachedOutboundSubjects = GetOutboundSubjects(_cachedOutbound);
+            _cachedOutboundVersion = versions.Outbound;
+        }
+    }
+
+    private void ResetNatsCache()
+    {
+        _cachedSessionId = null;
+        _cachedSubscriptionsVersion = -1;
+        _cachedInboundVersion = -1;
+        _cachedOutboundVersion = -1;
+        _cachedSubscriptions = [];
+        _cachedInbound = [];
+        _cachedOutbound = [];
+        _cachedInboundSubjects = [];
+        _cachedOutboundSubjects = [];
+        _cachedInboundExactCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+    }
+
+    private int GetInboundCount(string subject)
+    {
+        if (!HasNatsWildcard(subject))
+            return _cachedInboundExactCounts.TryGetValue(subject, out var exactCount) ? exactCount : 0;
+
+        var wildcardCount = 0;
+        foreach (var message in _cachedInbound)
+        {
+            if (SubjectMatchesPattern(subject, message.Subject))
+                wildcardCount++;
+        }
+
+        return wildcardCount;
+    }
+
+    private static Dictionary<string, int> BuildExactSubjectCounts(IReadOnlyList<NatsMessageEntry> inbound)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var message in inbound)
+            counts[message.Subject] = counts.GetValueOrDefault(message.Subject) + 1;
+        return counts;
+    }
+
+    private static bool HasNatsWildcard(string subject)
+        => subject.Contains('*', StringComparison.Ordinal) || subject.Contains('>', StringComparison.Ordinal);
 
     private static List<string> GetInboundSubjects(IReadOnlyList<NatsSubscriptionInfo> subscriptions, IReadOnlyList<NatsMessageEntry> inbound)
         => subscriptions.Select(x => x.Subject)
@@ -546,7 +690,19 @@ else
 
         return !string.IsNullOrWhiteSpace(selected) && subjects.Contains(selected, StringComparer.Ordinal)
             ? selected
-            : subjects[0];
+            : null;
+    }
+
+    private string? ResolveStoppableSubscription(IReadOnlyList<NatsSubscriptionInfo> subscriptions, string? selected)
+    {
+        if (!string.IsNullOrWhiteSpace(selected) && subscriptions.Any(s => string.Equals(s.Subject, selected, StringComparison.Ordinal)))
+            return selected;
+
+        var typedSubject = _subscribeSubject.Trim();
+        if (!string.IsNullOrWhiteSpace(typedSubject) && subscriptions.Any(s => string.Equals(s.Subject, typedSubject, StringComparison.Ordinal)))
+            return typedSubject;
+
+        return subscriptions.Count == 1 ? subscriptions[0].Subject : null;
     }
 
     private static NatsMessageEntry? ResolveSelectedMessage(IReadOnlyList<NatsMessageEntry> messages, string? selectedMessageId)
@@ -579,11 +735,11 @@ else
     {
         try
         {
-            var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+            var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "grpc", "DDSSim.proto");
             var protoBytes = await File.ReadAllBytesAsync(path);
             var services = await ProtoLoader.LoadProtoServicesAsync(protoBytes);
 
-            _bridgeSchemaAssembly = null;
+            _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
 
             var next = services
                 .SelectMany(service => service.Methods)
@@ -610,12 +766,14 @@ else
             }
 
             _selectedBridgeMessageType = _bridgeMessages[0].TypeName;
+            _selectedSubscribeMessageType = _bridgeMessages[0].TypeName;
+            _subscribeSubject = BuildBridgeSubscribeSubject(_selectedSubscribeMessageType);
             ApplySelectedBridgeMessage();
         }
         catch (Exception ex)
         {
             _bridgeSchemaAssembly = null;
-            _bridgeLoadError = $"nats/DDSSim.proto 로드 실패: {ex.Message}";
+            _bridgeLoadError = $"grpc/DDSSim.proto 로드 실패: {ex.Message}";
         }
     }
 
@@ -653,6 +811,7 @@ else
     }
 
     private static string BuildBridgeSubject(string typeName) => $"dds.sidecar.to-dds.{typeName}";
+    private static string BuildBridgeSubscribeSubject(string typeName) => $"dds.sidecar.to-nats.{typeName}";
 
     private static string StripPackagePrefix(string fullName)
     {
@@ -728,7 +887,7 @@ else
         if (_bridgeSchemaAssembly != null)
             return;
 
-        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "nats", "DDSSim.proto");
+        var path = Path.Combine(WebHostEnv.ContentRootPath, "schema", "proto", "grpc", "DDSSim.proto");
         var protoBytes = await File.ReadAllBytesAsync(path);
         _bridgeSchemaAssembly = await ProtoCompiler.CompileProtoToAssemblyAsync(protoBytes);
     }
