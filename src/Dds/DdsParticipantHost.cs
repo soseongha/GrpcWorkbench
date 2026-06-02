@@ -230,13 +230,39 @@ public sealed class DdsParticipantHostFactory
 
         qos = qos.WithDiscovery(d =>
         {
-            d.InitialPeers.Add("udpv4://127.0.0.1");
-            d.InitialPeers.Add("udpv4://localhost");
+            switch (transport.DiscoveryMode)
+            {
+                case DdsDiscoveryMode.PeerToPeer:
+                    d.InitialPeers.Clear();
+                    d.MulticastReceiveAddresses.Clear();
+                    foreach (var peer in transport.InitialPeers.Select(NormalizeUdpv4Locator).Where(x => !string.IsNullOrWhiteSpace(x)))
+                        d.InitialPeers.Add(peer);
+                    break;
 
-            if (!string.IsNullOrWhiteSpace(transport.MulticastAddress))
-                d.MulticastReceiveAddresses.Add(transport.MulticastAddress!);
+                case DdsDiscoveryMode.Multicast:
+                    if (!string.IsNullOrWhiteSpace(transport.MulticastAddress))
+                    {
+                        var locator = NormalizeUdpv4Locator(transport.MulticastAddress!);
+                        d.InitialPeers.Clear();
+                        d.InitialPeers.Add(locator);
+                        d.MulticastReceiveAddresses.Clear();
+                        d.MulticastReceiveAddresses.Add(locator);
+                    }
+                    break;
+            }
         });
 
         return qos;
+    }
+
+    private static string NormalizeUdpv4Locator(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return string.Empty;
+
+        return trimmed.Contains("://", StringComparison.Ordinal)
+            ? trimmed
+            : $"udpv4://{trimmed}";
     }
 }

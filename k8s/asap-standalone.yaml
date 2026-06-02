@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asap-standalone
+  labels:
+    app: asap-standalone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: asap-standalone
+  template:
+    metadata:
+      labels:
+        app: asap-standalone
+    spec:
+      containers:
+        - name: asap
+          image: localhost:5000/asap:latest
+          imagePullPolicy: Always
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:5226
+            - name: ASAP__NatsUrl
+              value: nats://localhost:4222
+            - name: ASAP__UdsSocketPath
+              value: /var/run/asap/grpc.sock
+            - name: ASAP__DefaultTargetUdsSocketPath
+              value: /var/run/dds-ambassador/grpc.sock
+            - name: ASAP__DdsDiscoveryMode
+              value: Default
+            - name: ASAP__DdsInitialPeers
+              value: ""
+            - name: ASAP__DdsDiscoveryPeerHosts
+              value: asap-standalone-dds.default.svc.cluster.local
+            - name: ASAP__DdsDiscoveryRefreshSeconds
+              value: "10"
+            - name: ASAP__DdsMulticastAddress
+              value: ""
+            - name: UDS_SOCKET_PATH
+              value: /var/run/asap/grpc.sock
+            - name: DEFAULT_TARGET_UDS_SOCKET_PATH
+              value: /var/run/dds-ambassador/grpc.sock
+          ports:
+            - containerPort: 5226
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+        - name: nats-server
+          image: localhost:5000/nats:2.10-alpine
+          imagePullPolicy: IfNotPresent
+          args:
+            - -p
+            - "4222"
+            - -a
+            - "127.0.0.1"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: asap-standalone-ui
+  labels:
+    app: asap-standalone
+spec:
+  type: LoadBalancer
+  selector:
+    app: asap-standalone
+  ports:
+    - name: http
+      port: 5226
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: asap-standalone-dds
+  labels:
+    app: asap-standalone
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: asap-standalone
+  ports:
+    - name: dds-disc
+      port: 7400
+      protocol: UDP
+      targetPort: 7400

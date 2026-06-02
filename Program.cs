@@ -64,6 +64,8 @@ builder.Services.AddSingleton<IGrpcStreamingService, GrpcStreamingService>();
 builder.Services.AddSingleton<INatsSessionService, NatsSessionService>();
 builder.Services.AddSingleton<WorkbenchNotificationService>();
 builder.Services.AddSingleton<WorkbenchStateService>();
+builder.Services.AddSingleton<DdsDiscoveryCoordinator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DdsDiscoveryCoordinator>());
 // TriggerExecutor: 싱글톤으로도 노출(UI Inject) + IHostedService로 자동 Start/Stop
 builder.Services.AddSingleton<TriggerExecutor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TriggerExecutor>());

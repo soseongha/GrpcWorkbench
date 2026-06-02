@@ -8,21 +8,44 @@
 @inject ISnackbar Snackbar
 @inject IWebHostEnvironment WebHostEnv
 @inject WorkbenchStateService State
+@inject IConfiguration Configuration
+@inject DdsDiscoveryCoordinator Discovery
 
 <div class="wb-panel wb-panel--contain pa-3">
     <div class="wb-panel-kicker">DDS</div>
-    <div class="wb-panel-heading" title="도메인만 정하면 기본 샘플로 바로 시작합니다">세션</div>
+    <div class="wb-panel-heading" title="Domain과 discovery 방식을 정해 DDS 세션을 엽니다.">세션</div>
 
-    <div class="wb-inline-note mt-2" title="XML 업로드는 선택 사항입니다. 비워 두면 저장소 기본 DDSSim 샘플과 topic/QoS 설정으로 바로 세션을 엽니다.">샘플 사용 가능</div>
+    <div class="wb-inline-note mt-2" title="XML 업로드는 선택 사항입니다. 비워 두면 기본 DDSSim 타입, topic, QoS 설정을 사용합니다.">샘플 사용 가능</div>
 
     <div class="wb-home-form mt-3">
         <MudTextField @bind-Value="_name" Label="세션 이름" Placeholder="예: DDSSim domain 0"
                       Variant="Variant.Outlined" Margin="Margin.Dense" />
         <MudNumericField @bind-Value="_domainId" Label="Domain ID" Min="0" Max="232"
                          Variant="Variant.Outlined" Margin="Margin.Dense" />
-        <MudTextField @bind-Value="_multicast" Label="멀티캐스트 주소 (선택)" Placeholder="239.255.0.1"
-                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudSelect T="DdsDiscoveryMode" @bind-Value="_discoveryMode" Label="Discovery"
+                   Variant="Variant.Outlined" Margin="Margin.Dense">
+            <MudSelectItem T="DdsDiscoveryMode" Value="@DdsDiscoveryMode.Default">기본</MudSelectItem>
+            <MudSelectItem T="DdsDiscoveryMode" Value="@DdsDiscoveryMode.Multicast">멀티캐스트</MudSelectItem>
+            <MudSelectItem T="DdsDiscoveryMode" Value="@DdsDiscoveryMode.PeerToPeer">피어 지정</MudSelectItem>
+        </MudSelect>
     </div>
+
+    @if (_discoveryMode == DdsDiscoveryMode.Multicast)
+    {
+        <div class="wb-home-form mt-3">
+            <MudTextField @bind-Value="_multicast" Label="멀티캐스트 주소" Placeholder="239.255.0.1"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </div>
+    }
+    else if (_discoveryMode == DdsDiscoveryMode.PeerToPeer)
+    {
+        <div class="wb-home-form mt-3">
+            <MudTextField @bind-Value="_initialPeersText" Label="Initial peers"
+                          Placeholder="10.1.2.3, asap-dds-peer-dds.default.svc.cluster.local"
+                          HelperText="쉼표, 세미콜론, 줄바꿈으로 여러 peer를 입력합니다. udpv4:// 접두사는 생략할 수 있습니다."
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" />
+        </div>
+    }
 
     <div class="wb-home-form mt-3">
         <div>
@@ -61,7 +84,7 @@
             @if (_creating)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                <text>생성 중…</text>
+                <text>생성 중</text>
             }
             else
             {
@@ -77,7 +100,9 @@
     [Parameter] public EventCallback OnCancelled { get; set; }
 
     private string _name = "";
-    private int _domainId = 0;
+    private int _domainId;
+    private DdsDiscoveryMode _discoveryMode = DdsDiscoveryMode.Default;
+    private string _initialPeersText = "";
     private string _multicast = "";
 
     private byte[]? _typesBytes;
@@ -87,6 +112,24 @@
 
     private bool _creating;
     private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Enum.TryParse<DdsDiscoveryMode>(Configuration["ASAP:DdsDiscoveryMode"], ignoreCase: true, out var mode))
+            _discoveryMode = mode;
+
+        _initialPeersText = Configuration["ASAP:DdsInitialPeers"] ?? "";
+        _multicast = Configuration["ASAP:DdsMulticastAddress"] ?? "";
+
+        await Discovery.RefreshNowAsync();
+        var discoveredPeers = Discovery.SnapshotPeers();
+        if (discoveredPeers.Count > 0)
+        {
+            _initialPeersText = string.Join(Environment.NewLine, discoveredPeers);
+            if (_discoveryMode == DdsDiscoveryMode.Default)
+                _discoveryMode = DdsDiscoveryMode.PeerToPeer;
+        }
+    }
 
     private async Task OnTypesFileSelected(IBrowserFile? file)
     {
@@ -109,8 +152,8 @@
     private async Task Submit()
     {
         _error = null;
-
         _creating = true;
+
         try
         {
             var (typesXml, typesFileName) = await ResolveTypesXmlAsync();
@@ -122,8 +165,14 @@
             var transport = new DdsTransportSettings
             {
                 DomainId = _domainId,
+                DiscoveryMode = _discoveryMode,
+                InitialPeers = ParsePeerList(_initialPeersText),
                 MulticastAddress = string.IsNullOrWhiteSpace(_multicast) ? null : _multicast.Trim(),
             };
+
+            if (transport.DiscoveryMode == DdsDiscoveryMode.PeerToPeer && transport.InitialPeers.Count == 0)
+                throw new InvalidOperationException("피어 지정 discovery는 Initial peers가 필요합니다.");
+
             var session = await Task.Run(() => DdsSessions.Create(new DdsSessionCreateRequest
             {
                 Name = sessionName,
@@ -133,6 +182,7 @@
                 ConfigXmlContent = configXml,
                 ConfigXmlFileName = configFileName,
             }));
+
             State.AddLog($"DDS 세션 생성: {session.Name}", LogLevel.Success);
             await OnCreated.InvokeAsync(session);
         }
@@ -147,19 +197,19 @@
         }
     }
 
-        private async Task<(string Xml, string FileName)> ResolveTypesXmlAsync()
+    private async Task<(string Xml, string FileName)> ResolveTypesXmlAsync()
+    {
+        if (_typesBytes is { Length: > 0 })
+            return (System.Text.Encoding.UTF8.GetString(_typesBytes), _typesFileName ?? "DDSSim.xml");
+
+        var filePath = ResolvePreferredSamplePath("DDSSim.xml");
+        if (File.Exists(filePath))
         {
-                if (_typesBytes is { Length: > 0 })
-                        return (System.Text.Encoding.UTF8.GetString(_typesBytes), _typesFileName ?? "DDSSim.xml");
-
-            var filePath = ResolvePreferredSamplePath("DDSSim.xml");
-            if (File.Exists(filePath))
-            {
-                var xml = await File.ReadAllTextAsync(filePath);
+            var xml = await File.ReadAllTextAsync(filePath);
             return (xml, Path.GetFileName(filePath));
-            }
+        }
 
-                const string fallback = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+        const string fallback = @"<?xml version=""1.0"" encoding=""UTF-8""?>
 <dds>
     <types>
         <module name=""STRUCT"">
@@ -170,26 +220,26 @@
         </module>
     </types>
 </dds>";
-                return (fallback, "DDSSim.default.xml");
-        }
+        return (fallback, "DDSSim.default.xml");
+    }
 
-        private async Task<(string Xml, string FileName)> ResolveConfigXmlAsync()
-        {
-                if (_configBytes is { Length: > 0 })
-                        return (System.Text.Encoding.UTF8.GetString(_configBytes), _configFileName ?? "dds-config.xml");
+    private async Task<(string Xml, string FileName)> ResolveConfigXmlAsync()
+    {
+        if (_configBytes is { Length: > 0 })
+            return (System.Text.Encoding.UTF8.GetString(_configBytes), _configFileName ?? "dds-config.xml");
 
-            var sampleConfig = await TryBuildSampleConfigXmlAsync();
-            if (sampleConfig is not null)
+        var sampleConfig = await TryBuildSampleConfigXmlAsync();
+        if (sampleConfig is not null)
             return sampleConfig.Value;
 
-            var filePath = ResolvePreferredSamplePath("dds-config.xml");
-                if (File.Exists(filePath))
-                {
-                        var xml = await File.ReadAllTextAsync(filePath);
-                return (xml, Path.GetFileName(filePath));
-                }
+        var filePath = ResolvePreferredSamplePath("dds-config.xml");
+        if (File.Exists(filePath))
+        {
+            var xml = await File.ReadAllTextAsync(filePath);
+            return (xml, Path.GetFileName(filePath));
+        }
 
-                const string fallback = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+        const string fallback = @"<?xml version=""1.0"" encoding=""UTF-8""?>
 <dds-ambassador-config>
     <dds>
         <qos_library name=""AmbassadorProfiles"">
@@ -205,15 +255,16 @@
         </topic>
     </topics>
 </dds-ambassador-config>";
-                return (fallback, "dds-config.default.xml");
-        }
+        return (fallback, "dds-config.default.xml");
+    }
 
     private string ResolvePreferredSamplePath(string fileName)
-    {
-        var localSamplePath = Path.Combine(WebHostEnv.ContentRootPath, "samples", "dds", fileName);
+        => Path.Combine(WebHostEnv.ContentRootPath, "samples", "dds", fileName);
 
-        return localSamplePath;
-    }
+    private static List<string> ParsePeerList(string value)
+        => value.Split([',', ';', '\r', '\n', '\t', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private async Task<(string Xml, string FileName)?> TryBuildSampleConfigXmlAsync()
     {
