@@ -50,9 +50,8 @@ section, for example:
 ```text
 ASAP__NatsUrl=nats://localhost:4222
 ASAP__UdsSocketPath=/var/run/asap/grpc.sock
-ASAP__DdsDiscoveryMode=PeerToPeer
-ASAP__DdsInitialPeers=10.1.2.3,asap-dds-peer-dds.default.svc.cluster.local
-ASAP__DdsDiscoveryPeerHosts=asap-standalone-dds.default.svc.cluster.local
+ASAP__DdsDiscoveryMode=Default
+ASAP__DdsInitialPeers=
 ```
 
 For compatibility with the existing gRPC/UDS host code, the Kubernetes example
@@ -83,17 +82,14 @@ repeatable, prefer `PeerToPeer` for one-to-one or small fixed topologies. For
 many dynamic participants, use an RTI discovery service/cloud discovery design
 instead of trying to maintain every peer address in every pod.
 
-ASAP also includes a lightweight DDS discovery coordinator. It is not an RTI
-Discovery Server and does not speak the RTPS discovery protocol. Instead, it
-periodically resolves configured Kubernetes headless service names from
-`ASAP__DdsDiscoveryPeerHosts`, converts the returned pod IPs to `udpv4://...`
-locators, and pre-fills DDS sessions with those locators in `PeerToPeer` mode.
-
-The standalone manifest creates this headless DNS anchor:
+ASAP does not run a discovery coordinator in-process. For multicast-disabled
+k8s environments, configure each DDS session with a reachable RTI Connext
+initial peer locator. If an external discovery relay is deployed in the same
+cluster, the value can be a service DNS name, for example:
 
 ```text
-asap-standalone-dds.default.svc.cluster.local
+[32]@builtin.udpv4://dds-discovery.default.svc.cluster.local
 ```
 
-For another namespace, replace `default` with the namespace where ASAP is
-deployed.
+For another namespace, replace `default` with the namespace where that external
+discovery endpoint is deployed.

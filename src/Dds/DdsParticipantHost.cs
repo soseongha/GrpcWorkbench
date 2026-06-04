@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Reflection;
 using ASAP.Models.Dds;
 using Rti.Dds.Core;
 using Rti.Dds.Core.Policy;
@@ -74,9 +75,16 @@ public sealed class DdsParticipantHost : IAsyncDisposable
         {
             var topic = GetOrCreateTopic(topicName, typeName);
             var readerQos = TryGetDataReaderQos(qosProfileFullName);
-            return readerQos is not null
+            var reader = readerQos is not null
                 ? _subscriber.CreateDataReader(topic, readerQos)
                 : _subscriber.CreateDataReader(topic);
+            _logger.LogInformation(
+                "DDS reader created topic={Topic} type={Type} qos={Qos} matchStatus={MatchStatus}",
+                topicName,
+                typeName,
+                qosProfileFullName,
+                TryDescribeMatchedStatus(reader));
+            return reader;
         });
     }
 
@@ -89,11 +97,28 @@ public sealed class DdsParticipantHost : IAsyncDisposable
         {
             var topic = GetOrCreateTopic(topicName, typeName);
             var writerQos = TryGetDataWriterQos(qosProfileFullName);
-            return writerQos is not null
+            var writer = writerQos is not null
                 ? _publisher.CreateDataWriter(topic, writerQos)
                 : _publisher.CreateDataWriter(topic);
+            _logger.LogInformation(
+                "DDS writer created topic={Topic} type={Type} qos={Qos} matchStatus={MatchStatus}",
+                topicName,
+                typeName,
+                qosProfileFullName,
+                TryDescribeMatchedStatus(writer));
+            return writer;
         });
     }
+
+    public string DescribeWriterMatchStatus(string topicName)
+        => _writers.TryGetValue(topicName, out var writer)
+            ? TryDescribeMatchedStatus(writer)
+            : "writer-not-created";
+
+    public string DescribeReaderMatchStatus(string topicName)
+        => _readers.TryGetValue(topicName, out var reader)
+            ? TryDescribeMatchedStatus(reader)
+            : "reader-not-created";
 
     public DynamicData CreateSample(string typeName)
     {
@@ -138,6 +163,38 @@ public sealed class DdsParticipantHost : IAsyncDisposable
         {
             _logger.LogDebug(ex, "DataWriterQos 로드 실패, 기본 QoS 사용: {Profile}", fullProfileName);
             return null;
+        }
+    }
+
+    private static string TryDescribeMatchedStatus(object entity)
+    {
+        try
+        {
+            var type = entity.GetType();
+            var candidates = new[]
+            {
+                "PublicationMatchedStatus",
+                "SubscriptionMatchedStatus",
+                "MatchedPublicationStatus",
+                "MatchedSubscriptionStatus"
+            };
+
+            foreach (var name in candidates)
+            {
+                var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
+                if (property is not null)
+                    return $"{name}={property.GetValue(entity)}";
+
+                var method = type.GetMethod($"Get{name}", BindingFlags.Instance | BindingFlags.Public, Type.EmptyTypes);
+                if (method is not null)
+                    return $"{name}={method.Invoke(entity, null)}";
+            }
+
+            return "match-status-api-not-found";
+        }
+        catch (Exception ex)
+        {
+            return $"match-status-unavailable:{ex.GetType().Name}:{ex.Message}";
         }
     }
 
@@ -200,6 +257,13 @@ public sealed class DdsParticipantHostFactory
         var qosProvider = new QosProvider(profile);
 
         var participantQos = ApplyTransport(qosProvider.GetDomainParticipantQos(), transport);
+        var factoryLogger = _loggerFactory.CreateLogger<DdsParticipantHostFactory>();
+        factoryLogger.LogInformation(
+            "DDS participant creating domain={Domain} discovery={DiscoveryMode} initialPeers={InitialPeers} multicast={Multicast}",
+            transport.DomainId,
+            transport.DiscoveryMode,
+            string.Join(",", transport.InitialPeers.Select(NormalizeUdpv4Locator)),
+            transport.MulticastAddress ?? "");
         var participant = DomainParticipantFactory.Instance.CreateParticipant(
             transport.DomainId, participantQos);
 

@@ -9,7 +9,6 @@
 @inject IWebHostEnvironment WebHostEnv
 @inject WorkbenchStateService State
 @inject IConfiguration Configuration
-@inject DdsDiscoveryCoordinator Discovery
 
 <div class="wb-panel wb-panel--contain pa-3">
     <div class="wb-panel-kicker">DDS</div>
@@ -113,22 +112,13 @@
     private bool _creating;
     private string? _error;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         if (Enum.TryParse<DdsDiscoveryMode>(Configuration["ASAP:DdsDiscoveryMode"], ignoreCase: true, out var mode))
             _discoveryMode = mode;
 
         _initialPeersText = Configuration["ASAP:DdsInitialPeers"] ?? "";
         _multicast = Configuration["ASAP:DdsMulticastAddress"] ?? "";
-
-        await Discovery.RefreshNowAsync();
-        var discoveredPeers = Discovery.SnapshotPeers();
-        if (discoveredPeers.Count > 0)
-        {
-            _initialPeersText = string.Join(Environment.NewLine, discoveredPeers);
-            if (_discoveryMode == DdsDiscoveryMode.Default)
-                _discoveryMode = DdsDiscoveryMode.PeerToPeer;
-        }
     }
 
     private async Task OnTypesFileSelected(IBrowserFile? file)

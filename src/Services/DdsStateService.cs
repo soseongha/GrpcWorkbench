@@ -41,6 +41,12 @@ public sealed class DdsStateService
             ?? throw new InvalidOperationException($"DDS 세션 없음: {sessionId}");
 
         var fullQos = QualifyProfile(qosProfileName);
+        _logger.LogInformation(
+            "DDS subscription requested session={SessionId} topic={Topic} type={Type} qos={Qos}",
+            sessionId,
+            topicName,
+            typeName,
+            fullQos);
         var readerKey = BuildReaderKey(sessionId, topicName);
         lock (_subscriptionGate)
         {
@@ -53,6 +59,11 @@ public sealed class DdsStateService
         }
 
         var reader = host.GetOrCreateReader(topicName, typeName, fullQos);
+        _logger.LogInformation(
+            "DDS subscription reader ready session={SessionId} topic={Topic} matchStatus={MatchStatus}",
+            sessionId,
+            topicName,
+            host.DescribeReaderMatchStatus(topicName));
 
         var info = new DdsSubscriptionInfo
         {
@@ -154,6 +165,12 @@ public sealed class DdsStateService
             ?? throw new InvalidOperationException($"DDS 세션 없음: {sessionId}");
 
         var fullQos = QualifyProfile(qosProfileName);
+        _logger.LogInformation(
+            "DDS publish requested session={SessionId} topic={Topic} type={Type} qos={Qos}",
+            sessionId,
+            topicName,
+            typeName,
+            fullQos);
         var writer = host.GetOrCreateWriter(topicName, typeName, fullQos);
 
         using var sample = host.CreateSample(typeName);
@@ -161,6 +178,11 @@ public sealed class DdsStateService
         {
             DdsJsonConverter.ApplyJson(sample, jsonPayload);
             writer.Write(sample);
+            _logger.LogInformation(
+                "DDS publish write succeeded session={SessionId} topic={Topic} writerMatchStatus={MatchStatus}",
+                sessionId,
+                topicName,
+                host.DescribeWriterMatchStatus(topicName));
         }
         catch (Exception ex)
         {
@@ -237,9 +259,11 @@ public sealed class DdsStateService
         {
             var typed = (DataReader<DynamicData>)anyReader;
             using var samples = typed.Take();
+            var validCount = 0;
             foreach (var s in samples)
             {
                 if (!s.Info.ValidData) continue;
+                validCount++;
                 var json = DdsJsonConverter.ToJson(s.Data!);
                 var entry = new DdsSampleEntry
                 {
@@ -256,6 +280,14 @@ public sealed class DdsStateService
                 if (_samples.TryGetValue(info.SubscriptionId, out var buffer))
                     buffer.Append(entry);
                 SampleReceived?.Invoke(info, entry);
+            }
+            if (validCount > 0)
+            {
+                _logger.LogInformation(
+                    "DDS samples received session={SessionId} topic={Topic} count={Count}",
+                    info.SessionId,
+                    info.TopicName,
+                    validCount);
             }
             StateChanged?.Invoke();
         }

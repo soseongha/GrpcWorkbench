@@ -13,6 +13,7 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject WorkbenchStateService State
+@inject IDialogService DialogService
 @implements IDisposable
 
 @if (Session == null)
@@ -129,6 +130,10 @@ else
                                            StartIcon="@Icons.Material.Filled.DeleteSweep"
                                            Disabled="@(activeSubscriptions.Count == 0)"
                                            OnClick="ClearReceiveHistory">초기화</MudButton>
+                                <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.Search"
+                                           Disabled="@(activeSubscriptions.Count == 0)"
+                                           OnClick="@(() => OpenDdsSearchAsync(true))">검색</MudButton>
                             </div>
 
                             <div class="d-flex flex-wrap" style="gap:8px;">
@@ -192,23 +197,19 @@ else
                                     else
                                     {
                                         <div class="wb-inline-note mb-2">@($"type: {selectedTopic?.TypeName ?? selectedSubscription.TypeName} · qos: {selectedTopic?.QosProfileName ?? "(미확인)"}")</div>
-                                        var sel = samples.FirstOrDefault(x => x.SequenceNumber == _selectedSampleSeq) ?? samples.First();
-                                        <div class="wb-message-split">
-                                            <div class="wb-scroll wb-message-list">
-                                                <Virtualize TItem="DdsSampleEntry" Items="@samples" Context="sample" ItemSize="38">
-                                                    <button type="button"
-                                                            class="wb-call-row wb-message-row @(sel.SequenceNumber == sample.SequenceNumber ? "is-selected" : null)"
-                                                            @onclick="@(() => _selectedSampleSeq = sample.SequenceNumber)">
-                                                        <div class="wb-message-row-main">
-                                                            <span class="wb-mono">@sample.ReceivedAt.ToLocalTime().ToString("HH:mm:ss")</span>
-                                                            <span>#@sample.SequenceNumber</span>
-                                                        </div>
-                                                    </button>
-                                                </Virtualize>
-                                            </div>
-                                            <div class="wb-message-content">
-                                             <JsonDataView Json="@sel.JsonData" AutoExpandDepth="3" />
-                                            </div>
+                                        <div class="wb-scroll wb-message-list wb-message-list--wide">
+                                            <Virtualize TItem="DdsSampleEntry" Items="@samples" Context="sample" ItemSize="38">
+                                                <button type="button"
+                                                        class="wb-call-row wb-message-row @(_selectedSampleSeq == sample.SequenceNumber ? "is-selected" : null)"
+                                                        title="상세 보기"
+                                                        @onclick="@(() => OpenDdsSampleDetail(selectedSubscription, selectedTopic, sample))">
+                                                    <div class="wb-message-row-main">
+                                                        <span class="wb-mono">@sample.ReceivedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                                                        <span>#@sample.SequenceNumber</span>
+                                                        <span>@sample.TypeName</span>
+                                                    </div>
+                                                </button>
+                                            </Virtualize>
                                         </div>
                                     }
                                 </div>
@@ -232,6 +233,10 @@ else
                                    Disabled="@(outbound.Count == 0)"
                                    OnClick="ClearOutboundHistory"
                                    StartIcon="@Icons.Material.Filled.DeleteSweep">초기화</MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                   Disabled="@(outbound.Count == 0)"
+                                   OnClick="@(() => OpenDdsSearchAsync(false))"
+                                   StartIcon="@Icons.Material.Filled.Search">검색</MudButton>
                     </div>
 
                     @if (outbound.Count == 0)
@@ -272,35 +277,23 @@ else
                                 else
                                 {
                                     <div class="wb-inline-note mb-2">topic: @selectedOutboundMessage.TopicName · @selectedOutboundMessages.Count 개 송신</div>
-                                    <div class="wb-message-split">
-                                        <div class="wb-scroll wb-message-list">
+                                    <div class="wb-scroll wb-message-list wb-message-list--wide">
                                             <Virtualize TItem="DdsOutboundEntry" Items="@selectedOutboundMessages" Context="message" ItemSize="38">
                                                 @{
                                                     var messageKey = OutboundKey(message);
                                                 }
                                                 <button type="button"
-                                                        class="wb-call-row wb-message-row @(OutboundKey(selectedOutboundMessage) == messageKey ? "is-selected" : null)"
-                                                        @onclick="@(() => _selectedOutboundKey = messageKey)">
+                                                        class="wb-call-row wb-message-row @(_selectedOutboundKey == messageKey ? "is-selected" : null)"
+                                                        title="상세 보기"
+                                                        @onclick="@(() => OpenDdsOutboundDetail(message, messageKey))">
                                                     <div class="wb-message-row-main">
                                                         <span class="wb-mono">@message.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                                        <span>@message.TypeName</span>
                                                         <span>@(message.Success ? "OK" : "실패")</span>
                                                     </div>
                                                 </button>
                                             </Virtualize>
                                         </div>
-                                        <div class="wb-message-content">
-                                            <div class="wb-inline-note mb-2">@($"Outbound · {selectedOutboundMessage.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {selectedOutboundMessage.TypeName}")</div>
-                                            @if (selectedOutboundMessage.Success)
-                                            {
-                                                <JsonDataView Json="@selectedOutboundMessage.JsonPayload" AutoExpandDepth="3" />
-                                            }
-                                            else
-                                            {
-                                                <div class="wb-inline-note mb-2">@selectedOutboundMessage.Error</div>
-                                                <JsonDataView Json="@selectedOutboundMessage.JsonPayload" AutoExpandDepth="3" />
-                                            }
-                                        </div>
-                                    </div>
                                 }
                             </div>
                         </div>
@@ -685,7 +678,6 @@ else
     private long _selectedSampleSeq = 0;
     private string? _selectedOutboundTopicName;
     private string? _selectedOutboundKey;
-
     private string _scenarioDraftTopicName = "";
     private DdsTopicConfig? _scenarioDraftTopic;
     private string _scenarioDraftJson = "{}";
@@ -1929,6 +1921,155 @@ else
     {
         _selectedOutboundTopicName = topicName;
         _selectedOutboundKey = null;
+    }
+
+    private void OpenDdsSearchAsync(bool inbound)
+    {
+        var direction = inbound ? "수신" : "송신";
+        var items = inbound ? BuildDdsInboundSearchItems() : BuildDdsOutboundSearchItems();
+        ShowSearchDialog(direction, items);
+    }
+
+    private List<MessageSearchResultItem> BuildDdsInboundSearchItems()
+    {
+        var items = new List<MessageSearchResultItem>();
+        foreach (var subscription in ActiveSubscriptions)
+        {
+            var topic = FindTopic(subscription.TopicName);
+            foreach (var sample in GetCachedSamples(subscription.SubscriptionId))
+            {
+                items.Add(new MessageSearchResultItem
+                {
+                    Id = $"dds-in:{subscription.SubscriptionId}:{sample.SequenceNumber}",
+                    Direction = "수신",
+                    Timestamp = sample.ReceivedAt,
+                    Topic = sample.TopicName,
+                    Summary = $"#{sample.SequenceNumber} · {sample.TypeName}",
+                    PayloadJson = sample.JsonData,
+                    RawPayload = sample.JsonData,
+                    Details = new Dictionary<string, string>
+                    {
+                        ["방향"] = "수신",
+                        ["시간"] = sample.ReceivedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                        ["토픽"] = sample.TopicName,
+                        ["타입"] = sample.TypeName,
+                        ["QoS"] = topic?.QosProfileName ?? "(미지정)",
+                        ["순번"] = $"#{sample.SequenceNumber}",
+                        ["구독"] = subscription.SubscriptionId,
+                    },
+                });
+            }
+        }
+
+        return items;
+    }
+
+    private List<MessageSearchResultItem> BuildDdsOutboundSearchItems()
+        => RecentOutbound.Select(message => new MessageSearchResultItem
+        {
+            Id = $"dds-out:{message.TopicName}:{message.TypeName}:{message.Timestamp.Ticks}:{message.Success}",
+            Direction = "송신",
+            Timestamp = message.Timestamp,
+            Topic = message.TopicName,
+            Summary = $"{message.TypeName} · {(message.Success ? "OK" : "실패")}",
+            PayloadJson = message.JsonPayload,
+            RawPayload = message.JsonPayload,
+            Error = message.Error,
+            Details = new Dictionary<string, string>
+            {
+                ["방향"] = "송신",
+                ["시간"] = message.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                ["토픽"] = message.TopicName,
+                ["타입"] = message.TypeName,
+                ["상태"] = message.Success ? "OK" : "실패",
+            },
+        }).ToList();
+
+    private void ShowSearchDialog(string direction, IReadOnlyList<MessageSearchResultItem> items)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Direction"] = direction,
+            ["Items"] = items,
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+        };
+
+        DialogService.Show<MessageSearchDialog>($"{direction} 검색", parameters, options);
+    }
+
+    private void OpenDdsSampleDetail(DdsSubscriptionInfo subscription, DdsTopicConfig? topic, DdsSampleEntry sample)
+    {
+        _selectedSampleSeq = sample.SequenceNumber;
+
+        var details = new Dictionary<string, string>
+        {
+            ["방향"] = "수신",
+            ["시간"] = sample.ReceivedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff"),
+            ["토픽"] = sample.TopicName,
+            ["타입"] = sample.TypeName,
+            ["QoS"] = topic?.QosProfileName ?? "(미지정)",
+            ["순번"] = $"#{sample.SequenceNumber}",
+            ["구독"] = subscription.SubscriptionId,
+            ["Source TS"] = sample.SourceTimestampNs > 0 ? sample.SourceTimestampNs.ToString() : "(없음)",
+            ["Publication"] = sample.PublicationHandle ?? "(없음)",
+        };
+
+        ShowMessageDetail("DDS 수신", "샘플", Icons.Material.Filled.Download, Color.Info, details, sample.JsonData);
+    }
+
+    private void OpenDdsOutboundDetail(DdsOutboundEntry message, string messageKey)
+    {
+        _selectedOutboundKey = messageKey;
+
+        var details = new Dictionary<string, string>
+        {
+            ["방향"] = "송신",
+            ["시간"] = message.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff"),
+            ["토픽"] = message.TopicName,
+            ["타입"] = message.TypeName,
+            ["상태"] = message.Success ? "OK" : "실패",
+        };
+
+        ShowMessageDetail("DDS 송신", "결과", Icons.Material.Filled.NorthEast, Color.Primary, details, message.JsonPayload, message.Error);
+    }
+
+    private void ShowMessageDetail(
+        string title,
+        string kicker,
+        string icon,
+        Color iconColor,
+        IReadOnlyDictionary<string, string> details,
+        string payloadJson,
+        string? error = null)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Title"] = title,
+            ["Kicker"] = kicker,
+            ["Icon"] = icon,
+            ["IconColor"] = iconColor,
+            ["Details"] = details,
+            ["PayloadJson"] = payloadJson,
+            ["AutoText"] = payloadJson,
+            ["RawText"] = payloadJson,
+            ["Error"] = error,
+            ["ShowPayloadModes"] = false,
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+        };
+
+        DialogService.Show<MessageDetailDialog>(title, parameters, options);
     }
 
     private void ClearReceiveHistory()

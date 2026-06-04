@@ -1,0 +1,100 @@
+@using System.Collections.Generic
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center" style="gap:8px;">
+            <MudIcon Icon="@Icon" Size="Size.Small" Color="@IconColor" />
+            <div>
+                <div class="wb-panel-kicker">@Kicker</div>
+                <div class="wb-panel-heading">@Title</div>
+            </div>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <div class="wb-detail-dialog">
+            <div class="wb-detail-grid mb-3">
+                @foreach (var item in Details)
+                {
+                    <div class="wb-detail-cell">
+                        <div class="wb-panel-kicker">@item.Key</div>
+                        <div class="wb-mono wb-detail-value" title="@item.Value">@item.Value</div>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Error))
+            {
+                <div class="wb-inline-note mb-3">@Error</div>
+            }
+
+            @if (ShowPayloadModes)
+            {
+                <MudToggleGroup T="MessagePayloadViewMode" Value="_mode"
+                                ValueChanged="@((MessagePayloadViewMode mode) => _mode = mode)"
+                                Color="Color.Primary" Size="Size.Small" CheckMark="false"
+                                SelectionMode="SelectionMode.SingleSelection"
+                                Class="mb-3">
+                    <MudToggleItem Value="MessagePayloadViewMode.Auto" Text="자동" />
+                    <MudToggleItem Value="MessagePayloadViewMode.Raw" Text="raw" />
+                    <MudToggleItem Value="MessagePayloadViewMode.Base64" Text="base64" />
+                    <MudToggleItem Value="MessagePayloadViewMode.Hex" Text="hex" />
+                </MudToggleGroup>
+            }
+
+            <div class="wb-detail-payload">
+                @if (CurrentJson is string json)
+                {
+                    <JsonDataView Json="@json" AutoExpandDepth="3" />
+                }
+                else
+                {
+                    <div class="wb-code wb-code--accent">@CurrentText</div>
+                }
+            </div>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Close">닫기</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string Title { get; set; } = "메시지";
+    [Parameter] public string Kicker { get; set; } = "상세";
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Article;
+    [Parameter] public Color IconColor { get; set; } = Color.Primary;
+    [Parameter] public IReadOnlyDictionary<string, string> Details { get; set; } = new Dictionary<string, string>();
+    [Parameter] public string? PayloadJson { get; set; }
+    [Parameter] public string? AutoText { get; set; }
+    [Parameter] public string? RawText { get; set; }
+    [Parameter] public string? Base64Text { get; set; }
+    [Parameter] public string? HexText { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool ShowPayloadModes { get; set; }
+
+    private MessagePayloadViewMode _mode;
+
+    private string? CurrentJson
+        => _mode == MessagePayloadViewMode.Auto ? PayloadJson : null;
+
+    private string CurrentText
+        => _mode switch
+        {
+            MessagePayloadViewMode.Raw => RawText ?? string.Empty,
+            MessagePayloadViewMode.Base64 => Base64Text ?? string.Empty,
+            MessagePayloadViewMode.Hex => HexText ?? string.Empty,
+            _ => AutoText ?? RawText ?? string.Empty
+        };
+
+    private void Close() => MudDialog.Close();
+
+    private enum MessagePayloadViewMode
+    {
+        Auto,
+        Raw,
+        Base64,
+        Hex
+    }
+}

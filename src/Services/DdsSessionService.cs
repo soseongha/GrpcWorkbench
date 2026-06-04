@@ -44,14 +44,23 @@ public sealed class DdsSessionService : IDdsSessionService, IAsyncDisposable
     {
         var configParse = DdsConfigParser.Parse(request.ConfigXmlContent);
         var types = DdsTypeParser.Parse(request.TypesXmlContent);
+        var transport = NormalizeTransport(request.Transport);
 
-        var host = _hostFactory.Create(request.Transport, request.TypesXmlContent, configParse.QosProfilesXml);
+        _logger.LogInformation(
+            "DDS session create requested name={Name} domain={Domain} discovery={DiscoveryMode} initialPeers={InitialPeers} multicast={Multicast}",
+            request.Name,
+            transport.DomainId,
+            transport.DiscoveryMode,
+            string.Join(",", transport.InitialPeers),
+            transport.MulticastAddress ?? "");
+
+        var host = _hostFactory.Create(transport, request.TypesXmlContent, configParse.QosProfilesXml);
 
         var session = new DdsSession
         {
             SessionId = System.Guid.NewGuid().ToString(),
             Name = request.Name,
-            Transport = request.Transport,
+            Transport = transport,
             TypesXmlContent = System.Text.Encoding.UTF8.GetBytes(request.TypesXmlContent),
             TypesXmlFileName = request.TypesXmlFileName,
             ConfigXmlContent = System.Text.Encoding.UTF8.GetBytes(request.ConfigXmlContent),
@@ -66,9 +75,47 @@ public sealed class DdsSessionService : IDdsSessionService, IAsyncDisposable
 
         _logger.LogInformation(
             "DDS 세션 생성: {Name} ({Id}) — domain={Domain}, topics={Topics}, types={Types}",
-            session.Name, session.SessionId, request.Transport.DomainId,
+            session.Name, session.SessionId, transport.DomainId,
             session.Topics.Count, session.Types.Count);
         return session;
+    }
+
+    private DdsTransportSettings NormalizeTransport(DdsTransportSettings source)
+    {
+        var initialPeers = source.InitialPeers
+            .Where(peer => !string.IsNullOrWhiteSpace(peer))
+            .Select(peer => peer.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var discoveryMode = source.DiscoveryMode;
+        if (discoveryMode == DdsDiscoveryMode.Default && initialPeers.Count > 0)
+        {
+            discoveryMode = DdsDiscoveryMode.PeerToPeer;
+            _logger.LogWarning(
+                "DDS discovery mode was Default while InitialPeers were supplied; using PeerToPeer. initialPeers={InitialPeers}",
+                string.Join(",", initialPeers));
+        }
+
+        return new DdsTransportSettings
+        {
+            DomainId = source.DomainId,
+            DiscoveryMode = discoveryMode,
+            InitialPeers = initialPeers,
+            MulticastAddress = string.IsNullOrWhiteSpace(source.MulticastAddress) ? null : source.MulticastAddress.Trim(),
+            AllowInterfaces = source.AllowInterfaces
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            DenyInterfaces = source.DenyInterfaces
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            SendBufferSize = source.SendBufferSize,
+            ReceiveBufferSize = source.ReceiveBufferSize,
+        };
     }
 
     public DdsSession? Get(string sessionId)

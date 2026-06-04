@@ -31,10 +31,6 @@ spec:
               value: Default
             - name: ASAP__DdsInitialPeers
               value: ""
-            - name: ASAP__DdsDiscoveryPeerHosts
-              value: asap-standalone-dds.default.svc.cluster.local
-            - name: ASAP__DdsDiscoveryRefreshSeconds
-              value: "10"
             - name: ASAP__DdsMulticastAddress
               value: ""
             - name: UDS_SOCKET_PATH
@@ -82,20 +78,3 @@ spec:
     - name: http
       port: 5226
       targetPort: http
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: asap-standalone-dds
-  labels:
-    app: asap-standalone
-spec:
-  clusterIP: None
-  publishNotReadyAddresses: true
-  selector:
-    app: asap-standalone
-  ports:
-    - name: dds-disc
-      port: 7400
-      protocol: UDP
-      targetPort: 7400

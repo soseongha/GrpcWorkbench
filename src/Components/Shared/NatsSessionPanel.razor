@@ -17,6 +17,7 @@
 @inject IWebHostEnvironment WebHostEnv
 @inject ISnackbar Snackbar
 @inject WorkbenchStateService State
+@inject IDialogService DialogService
 @implements IDisposable
 
 @if (Session == null)
@@ -109,6 +110,10 @@ else
                                Disabled="@(inbound.Count == 0)"
                                OnClick="ClearInboundMessages"
                                StartIcon="@Icons.Material.Filled.DeleteSweep">초기화</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                               Disabled="@(inbound.Count == 0)"
+                               OnClick="@(() => OpenNatsSearchAsync(true))"
+                               StartIcon="@Icons.Material.Filled.Search">검색</MudButton>
                 </div>
 
                 <div class="wb-subpanel mb-3 pa-3">
@@ -216,42 +221,19 @@ else
                             else
                             {
                                 <div class="wb-inline-note mb-2" title="@BuildSubjectTooltip(selectedInboundSubscription.Subject)">subject: @FormatSubjectForList(selectedInboundSubscription.Subject) · @selectedInboundMessages.Count 개 메시지</div>
-                                <div class="wb-message-split">
-                                    <div class="wb-scroll wb-message-list">
-                                        <Virtualize TItem="NatsMessageEntry" Items="@selectedInboundMessages" Context="message" ItemSize="38">
-                                            <button type="button"
-                                                    class="wb-call-row wb-message-row @(selectedInboundMessage?.MessageId == message.MessageId ? "is-selected" : null)"
-                                                    @onclick="@(() => _selectedInboundMessageId = message.MessageId)">
-                                                <div class="wb-message-row-main">
-                                                    <span class="wb-mono">@message.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
-                                                    <span>@message.PayloadSize bytes</span>
-                                                </div>
-                                            </button>
-                                        </Virtualize>
-                                    </div>
-                                    <div class="wb-message-content">
-                                        @if (selectedInboundMessage != null)
-                                        {
-                                            <div class="wb-inline-note mb-2">@FormatMessageMeta(selectedInboundMessage)</div>
-                                            <MudToggleGroup T="NatsPayloadViewMode" Value="_inboundPayloadViewMode"
-                                                            ValueChanged="@((NatsPayloadViewMode mode) => _inboundPayloadViewMode = mode)"
-                                                            Color="Color.Primary" Size="Size.Small" CheckMark="false"
-                                                            SelectionMode="SelectionMode.SingleSelection">
-                                                <MudToggleItem Value="NatsPayloadViewMode.Auto" Text="자동" />
-                                                <MudToggleItem Value="NatsPayloadViewMode.Text" Text="raw" />
-                                                <MudToggleItem Value="NatsPayloadViewMode.Base64" Text="base64" />
-                                                <MudToggleItem Value="NatsPayloadViewMode.Hex" Text="hex" />
-                                            </MudToggleGroup>
-                                            @if (ResolvePayloadJson(selectedInboundMessage, _inboundPayloadViewMode) is string inboundJson)
-                                            {
-                                                <JsonDataView Json="@inboundJson" AutoExpandDepth="3" />
-                                            }
-                                            else
-                                            {
-                                                <div class="wb-code wb-code--accent">@ResolvePayloadView(selectedInboundMessage, _inboundPayloadViewMode)</div>
-                                            }
-                                        }
-                                    </div>
+                                <div class="wb-scroll wb-message-list wb-message-list--wide">
+                                    <Virtualize TItem="NatsMessageEntry" Items="@selectedInboundMessages" Context="message" ItemSize="38">
+                                        <button type="button"
+                                                class="wb-call-row wb-message-row @(selectedInboundMessage?.MessageId == message.MessageId ? "is-selected" : null)"
+                                                title="상세 보기"
+                                                @onclick="@(() => OpenNatsMessageDetail(message, true))">
+                                            <div class="wb-message-row-main">
+                                                <span class="wb-mono">@message.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                                <span>@message.PayloadSize bytes</span>
+                                                <span>@FormatSubjectForList(message.Subject)</span>
+                                            </div>
+                                        </button>
+                                    </Virtualize>
                                 </div>
                             }
                         </div>
@@ -274,6 +256,10 @@ else
                                Disabled="@(outbound.Count == 0)"
                                OnClick="ClearOutboundMessages"
                                StartIcon="@Icons.Material.Filled.DeleteSweep">초기화</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                               Disabled="@(outbound.Count == 0)"
+                               OnClick="@(() => OpenNatsSearchAsync(false))"
+                               StartIcon="@Icons.Material.Filled.Search">검색</MudButton>
                 </div>
 
                 <div class="wb-subpanel mb-3 pa-3">
@@ -288,6 +274,10 @@ else
                 @if (outbound.Count == 0)
                 {
                     <div class="wb-empty"><div>아직 발행한 메시지가 없습니다</div></div>
+                }
+                else if (outboundSubjects.Count == 0)
+                {
+                    <div class="wb-empty"><div>조건에 맞는 메시지 없음</div></div>
                 }
                 else
                 {
@@ -322,39 +312,19 @@ else
                             else
                             {
                                 <div class="wb-inline-note mb-2" title="@BuildSubjectTooltip(selectedOutboundMessage.Subject)">subject: @FormatSubjectForList(selectedOutboundMessage.Subject) · @selectedOutboundMessages.Count 개 송신</div>
-                                <div class="wb-message-split">
-                                    <div class="wb-scroll wb-message-list">
-                                        <Virtualize TItem="NatsMessageEntry" Items="@selectedOutboundMessages" Context="message" ItemSize="38">
-                                            <button type="button"
-                                                    class="wb-call-row wb-message-row @(selectedOutboundMessage.MessageId == message.MessageId ? "is-selected" : null)"
-                                                    @onclick="@(() => _selectedOutboundMessageId = message.MessageId)">
-                                                <div class="wb-message-row-main">
-                                                    <span class="wb-mono">@message.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
-                                                    <span>@message.PayloadSize bytes</span>
-                                                </div>
-                                            </button>
-                                        </Virtualize>
-                                    </div>
-                                    <div class="wb-message-content">
-                                        <div class="wb-inline-note mb-2">@FormatMessageMeta(selectedOutboundMessage)</div>
-                                        <MudToggleGroup T="NatsPayloadViewMode" Value="_outboundPayloadViewMode"
-                                                        ValueChanged="@((NatsPayloadViewMode mode) => _outboundPayloadViewMode = mode)"
-                                                        Color="Color.Primary" Size="Size.Small" CheckMark="false"
-                                                        SelectionMode="SelectionMode.SingleSelection">
-                                            <MudToggleItem Value="NatsPayloadViewMode.Auto" Text="자동" />
-                                            <MudToggleItem Value="NatsPayloadViewMode.Text" Text="raw" />
-                                            <MudToggleItem Value="NatsPayloadViewMode.Base64" Text="base64" />
-                                            <MudToggleItem Value="NatsPayloadViewMode.Hex" Text="hex" />
-                                        </MudToggleGroup>
-                                        @if (ResolvePayloadJson(selectedOutboundMessage, _outboundPayloadViewMode) is string outboundJson)
-                                        {
-                                            <JsonDataView Json="@outboundJson" AutoExpandDepth="3" />
-                                        }
-                                        else
-                                        {
-                                            <div class="wb-code wb-code--accent">@ResolvePayloadView(selectedOutboundMessage, _outboundPayloadViewMode)</div>
-                                        }
-                                    </div>
+                                <div class="wb-scroll wb-message-list wb-message-list--wide">
+                                    <Virtualize TItem="NatsMessageEntry" Items="@selectedOutboundMessages" Context="message" ItemSize="38">
+                                        <button type="button"
+                                                class="wb-call-row wb-message-row @(selectedOutboundMessage.MessageId == message.MessageId ? "is-selected" : null)"
+                                                title="상세 보기"
+                                                @onclick="@(() => OpenNatsMessageDetail(message, false))">
+                                            <div class="wb-message-row-main">
+                                                <span class="wb-mono">@message.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                                <span>@message.PayloadSize bytes</span>
+                                                <span>@FormatSubjectForList(message.Subject)</span>
+                                            </div>
+                                        </button>
+                                    </Virtualize>
                                 </div>
                             }
                         </div>
@@ -414,8 +384,6 @@ else
     private System.Reflection.Assembly? _bridgeSchemaAssembly;
     private bool _bridgePublishMode = true;
     private bool _publishRawJsonMode;
-    private NatsPayloadViewMode _inboundPayloadViewMode;
-    private NatsPayloadViewMode _outboundPayloadViewMode;
     private string? _cachedSessionId;
     private long _cachedSubscriptionsVersion = -1;
     private long _cachedInboundVersion = -1;
@@ -550,12 +518,107 @@ else
         _selectedOutboundMessageId = null;
     }
 
+    private void OpenNatsSearchAsync(bool inbound)
+    {
+        var direction = inbound ? "수신" : "송신";
+        var source = inbound ? _cachedInbound : _cachedOutbound;
+        var items = source.Select(message =>
+        {
+            var payloadJson = ResolvePayloadJson(message, NatsPayloadViewMode.Auto);
+            var rawPayload = ResolvePayloadView(message, NatsPayloadViewMode.Text);
+            return new MessageSearchResultItem
+            {
+                Id = message.MessageId,
+                Direction = direction,
+                Timestamp = message.Timestamp,
+                Topic = message.Subject,
+                Summary = $"{message.PayloadSize} bytes",
+                PayloadJson = payloadJson,
+                RawPayload = rawPayload,
+                Base64Payload = ResolvePayloadView(message, NatsPayloadViewMode.Base64),
+                HexPayload = ResolvePayloadView(message, NatsPayloadViewMode.Hex),
+                Details = new Dictionary<string, string>
+                {
+                    ["방향"] = direction,
+                    ["시간"] = message.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                    ["Subject"] = message.Subject,
+                    ["표시"] = FormatSubjectForList(message.Subject),
+                    ["크기"] = $"{message.PayloadSize} bytes",
+                    ["ID"] = message.MessageId,
+                },
+            };
+        }).ToList();
+
+        var parameters = new DialogParameters
+        {
+            ["Direction"] = direction,
+            ["Items"] = items,
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+        };
+
+        DialogService.Show<MessageSearchDialog>($"{direction} 검색", parameters, options);
+    }
+
+    private void OpenNatsMessageDetail(NatsMessageEntry message, bool inbound)
+    {
+        if (inbound)
+            _selectedInboundMessageId = message.MessageId;
+        else
+            _selectedOutboundMessageId = message.MessageId;
+
+        var details = new Dictionary<string, string>
+        {
+            ["방향"] = inbound ? "수신" : "송신",
+            ["시간"] = message.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff"),
+            ["Subject"] = message.Subject,
+            ["표시"] = FormatSubjectForList(message.Subject),
+            ["크기"] = $"{message.PayloadSize} bytes",
+            ["ID"] = message.MessageId,
+        };
+        var autoJson = ResolvePayloadJson(message, NatsPayloadViewMode.Auto);
+        var autoText = autoJson == null ? ResolvePayloadView(message, NatsPayloadViewMode.Auto) : null;
+        var rawText = ResolvePayloadView(message, NatsPayloadViewMode.Text);
+        var base64Text = ResolvePayloadView(message, NatsPayloadViewMode.Base64);
+        var hexText = ResolvePayloadView(message, NatsPayloadViewMode.Hex);
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = inbound ? "NATS 수신" : "NATS 송신",
+            ["Kicker"] = "메시지",
+            ["Icon"] = inbound ? Icons.Material.Filled.Download : Icons.Material.Filled.NorthEast,
+            ["IconColor"] = inbound ? Color.Info : Color.Primary,
+            ["Details"] = details,
+            ["PayloadJson"] = autoJson,
+            ["AutoText"] = autoText,
+            ["RawText"] = rawText,
+            ["Base64Text"] = base64Text,
+            ["HexText"] = hexText,
+            ["ShowPayloadModes"] = true,
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+        };
+
+        DialogService.Show<MessageDetailDialog>(inbound ? "NATS 수신" : "NATS 송신", parameters, options);
+    }
+
     private void ClearInboundMessages()
     {
         if (Session == null)
             return;
 
         NatsSessions.ClearInbound(Session.SessionId);
+        _selectedInboundSubject = null;
         _selectedInboundMessageId = null;
         _cachedInboundVersion = -1;
         State.AddLog($"NATS 수신 기록 초기화: {Session.Name}", LogLevel.Info);

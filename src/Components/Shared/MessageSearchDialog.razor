@@ -1,0 +1,280 @@
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using ASAP.Models.Ui
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center" style="gap:8px;">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Color="Color.Primary" />
+            <div>
+                <div class="wb-panel-kicker">@Direction</div>
+                <div class="wb-panel-heading">검색</div>
+            </div>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">@_results.Count 결과</MudChip>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <div class="wb-search-dialog">
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <div class="wb-inline-note mb-3">@_error</div>
+            }
+
+            <div class="wb-search-grid wb-search-grid--terms">
+                <MudTextField Value="@Direction" Label="방향" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              ShrinkLabel="true" ReadOnly="true" />
+                <MudTextField @bind-Value="_topic" Label="토픽 / Subject" Placeholder="예: AirThreatInformation"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" ShrinkLabel="true" Clearable="true" />
+                <MudTextField @bind-Value="_payloadKey" Label="Payload key" Placeholder="예: Header.MsgID"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" ShrinkLabel="true" Clearable="true" />
+                <MudTextField @bind-Value="_payloadValue" Label="Payload value" Placeholder="예: TCC"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" ShrinkLabel="true" Clearable="true" />
+            </div>
+
+            <div class="wb-search-grid wb-search-grid--time mt-2">
+                <MudDatePicker @bind-Date="_startDate" Label="시작 날짜" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Clearable="true" DateFormat="yyyy-MM-dd" />
+                <MudTimePicker @bind-Time="_startTime" Label="시작 시간" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Clearable="true" TimeFormat="HH:mm:ss" AmPm="false" />
+                <MudDatePicker @bind-Date="_endDate" Label="종료 날짜" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Clearable="true" DateFormat="yyyy-MM-dd" />
+                <MudTimePicker @bind-Time="_endTime" Label="종료 시간" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Clearable="true" TimeFormat="HH:mm:ss" AmPm="false" />
+            </div>
+
+            <div class="d-flex align-center mt-3 mb-2" style="gap:8px;">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Search" OnClick="Search">검색</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.RestartAlt" OnClick="Clear">초기화</MudButton>
+                <MudSpacer />
+                <div class="wb-inline-note">빈 조건은 검색에서 제외됩니다.</div>
+            </div>
+
+            <div class="wb-search-split">
+                <div class="wb-search-list">
+                    @if (_results.Count == 0)
+                    {
+                        <div class="wb-empty"><div>조건에 맞는 메시지 없음</div></div>
+                    }
+                    else
+                    {
+                        <div class="wb-scroll wb-search-results">
+                            <Virtualize TItem="MessageSearchResultItem" Items="@_results" Context="item" ItemSize="58">
+                                <button type="button"
+                                        class="wb-call-row wb-message-row @(SelectedItem?.Id == item.Id ? "is-selected" : null)"
+                                        title="상세 보기"
+                                        @onclick="@(() => SelectItem(item))">
+                                    <div class="wb-call-row-top">
+                                        <span class="wb-mono wb-call-row-title" title="@item.Topic">@item.Topic</span>
+                                        <span class="wb-call-row-count">@item.Summary</span>
+                                    </div>
+                                    <div class="wb-call-row-meta">
+                                        <span>@item.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")</span>
+                                        <span>@item.Direction</span>
+                                    </div>
+                                </button>
+                            </Virtualize>
+                        </div>
+                    }
+                </div>
+
+                <div class="wb-search-detail">
+                    @if (SelectedItem is null)
+                    {
+                        <div class="wb-empty"><div>메시지를 선택하면 상세 정보가 표시됩니다.</div></div>
+                    }
+                    else
+                    {
+                        <div class="wb-detail-grid mb-3">
+                            @foreach (var item in SelectedItem.Details)
+                            {
+                                <div class="wb-detail-cell">
+                                    <div class="wb-panel-kicker">@item.Key</div>
+                                    <div class="wb-mono wb-detail-value" title="@item.Value">@item.Value</div>
+                                </div>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(SelectedItem.Error))
+                        {
+                            <div class="wb-inline-note mb-3">@SelectedItem.Error</div>
+                        }
+
+                        @if (ShowPayloadModes)
+                        {
+                            <MudToggleGroup T="MessagePayloadViewMode" Value="_mode"
+                                            ValueChanged="@((MessagePayloadViewMode mode) => _mode = mode)"
+                                            Color="Color.Primary" Size="Size.Small" CheckMark="false"
+                                            SelectionMode="SelectionMode.SingleSelection"
+                                            Class="mb-3">
+                                <MudToggleItem Value="MessagePayloadViewMode.Auto" Text="자동" />
+                                <MudToggleItem Value="MessagePayloadViewMode.Raw" Text="raw" />
+                                <MudToggleItem Value="MessagePayloadViewMode.Base64" Text="base64" />
+                                <MudToggleItem Value="MessagePayloadViewMode.Hex" Text="hex" />
+                            </MudToggleGroup>
+                        }
+
+                        <div class="wb-detail-payload">
+                            @if (CurrentJson is string json)
+                            {
+                                <JsonDataView Json="@json" AutoExpandDepth="3" />
+                            }
+                            else
+                            {
+                                <div class="wb-code wb-code--accent">@CurrentText</div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Close">닫기</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string Direction { get; set; } = string.Empty;
+    [Parameter] public IReadOnlyList<MessageSearchResultItem> Items { get; set; } = [];
+
+    private DateTime? _startDate;
+    private TimeSpan? _startTime;
+    private DateTime? _endDate;
+    private TimeSpan? _endTime;
+    private string _topic = string.Empty;
+    private string _payloadKey = string.Empty;
+    private string _payloadValue = string.Empty;
+    private string? _error;
+    private string? _selectedId;
+    private List<MessageSearchResultItem> _results = [];
+    private MessagePayloadViewMode _mode;
+
+    private MessageSearchResultItem? SelectedItem
+        => _results.FirstOrDefault(x => x.Id == _selectedId) ?? _results.FirstOrDefault();
+
+    private bool ShowPayloadModes
+        => SelectedItem?.Base64Payload is not null || SelectedItem?.HexPayload is not null;
+
+    private string? CurrentJson
+        => _mode == MessagePayloadViewMode.Auto ? SelectedItem?.PayloadJson : null;
+
+    private string CurrentText
+        => _mode switch
+        {
+            MessagePayloadViewMode.Raw => SelectedItem?.RawPayload ?? string.Empty,
+            MessagePayloadViewMode.Base64 => SelectedItem?.Base64Payload ?? string.Empty,
+            MessagePayloadViewMode.Hex => SelectedItem?.HexPayload ?? string.Empty,
+            _ => SelectedItem?.PayloadJson is null ? SelectedItem?.RawPayload ?? string.Empty : string.Empty,
+        };
+
+    protected override void OnParametersSet()
+    {
+        _results = Items.ToList();
+        EnsureSelection();
+    }
+
+    private void Search()
+    {
+        _error = null;
+        if (!TryBuildCriteria(out var criteria))
+            return;
+
+        criteria.Direction = Direction;
+        _results = Items
+            .Where(item => MessageSearchMatcher.Matches(criteria, item.Timestamp, item.Topic, item.PayloadJson, item.RawPayload))
+            .ToList();
+        _selectedId = null;
+        _mode = MessagePayloadViewMode.Auto;
+        EnsureSelection();
+    }
+
+    private void Clear()
+    {
+        _startDate = null;
+        _startTime = null;
+        _endDate = null;
+        _endTime = null;
+        _topic = string.Empty;
+        _payloadKey = string.Empty;
+        _payloadValue = string.Empty;
+        _error = null;
+        _results = Items.ToList();
+        _selectedId = null;
+        _mode = MessagePayloadViewMode.Auto;
+        EnsureSelection();
+    }
+
+    private void SelectItem(MessageSearchResultItem item)
+    {
+        _selectedId = item.Id;
+        _mode = MessagePayloadViewMode.Auto;
+    }
+
+    private void EnsureSelection()
+    {
+        if (_results.Count == 0)
+        {
+            _selectedId = null;
+            return;
+        }
+
+        if (_selectedId is null || !_results.Any(x => x.Id == _selectedId))
+            _selectedId = _results[0].Id;
+    }
+
+    private void Close() => MudDialog.Close();
+
+    private bool TryBuildCriteria(out MessageSearchCriteria criteria)
+    {
+        criteria = new MessageSearchCriteria { Direction = Direction };
+        if (_startTime.HasValue && !_startDate.HasValue)
+        {
+            _error = "시작 시간을 쓰려면 시작 날짜도 선택해 주세요.";
+            return false;
+        }
+
+        if (_endTime.HasValue && !_endDate.HasValue)
+        {
+            _error = "종료 시간을 쓰려면 종료 날짜도 선택해 주세요.";
+            return false;
+        }
+
+        var start = ComposeDateTime(_startDate, _startTime, endOfDay: false);
+        var end = ComposeDateTime(_endDate, _endTime, endOfDay: true);
+        if (start.HasValue && end.HasValue && start.Value > end.Value)
+        {
+            _error = "시작 시간이 종료 시간보다 늦습니다.";
+            return false;
+        }
+
+        criteria.StartLocal = start;
+        criteria.EndLocal = end;
+        criteria.Topic = _topic.Trim();
+        criteria.PayloadKey = _payloadKey.Trim();
+        criteria.PayloadValue = _payloadValue.Trim();
+        return true;
+    }
+
+    private static DateTime? ComposeDateTime(DateTime? date, TimeSpan? time, bool endOfDay)
+    {
+        if (!date.HasValue)
+            return null;
+
+        var baseDate = date.Value.Date;
+        if (time.HasValue)
+            return baseDate.Add(time.Value);
+
+        return endOfDay ? baseDate.AddDays(1).AddMilliseconds(-1) : baseDate;
+    }
+
+    private enum MessagePayloadViewMode
+    {
+        Auto,
+        Raw,
+        Base64,
+        Hex
+    }
+}

@@ -803,6 +803,11 @@ body {
   max-height: 260px;
 }
 
+.wb-message-list--wide {
+  width: 100%;
+  max-height: 300px;
+}
+
 .wb-message-row {
   padding: 8px 10px;
 }
@@ -829,6 +834,118 @@ body {
   box-sizing: border-box;
   margin: 0;
   background: color-mix(in srgb, var(--mud-palette-background) 72%, black 10%);
+}
+
+.wb-detail-dialog {
+  min-width: 0;
+}
+
+.wb-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.wb-detail-cell {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 82%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mud-palette-surface) 92%, var(--mud-palette-primary) 4%);
+}
+
+.wb-detail-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-detail-payload {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 82%, transparent);
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--mud-palette-background) 88%, black 4%);
+}
+
+.wb-detail-payload .wb-code {
+  min-height: 360px;
+  max-height: none;
+  margin: 0;
+}
+
+.wb-search-dialog {
+  min-width: 0;
+}
+
+.wb-search-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.wb-search-grid--terms {
+  grid-template-columns: minmax(120px, 0.55fr) minmax(220px, 1.15fr) minmax(190px, 1fr) minmax(190px, 1fr);
+}
+
+.wb-search-grid--time {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.wb-search-split {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr);
+  gap: 12px;
+  min-height: 460px;
+}
+
+.wb-search-list,
+.wb-search-detail {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 82%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mud-palette-surface) 92%, black 5%);
+}
+
+.wb-search-list {
+  padding: 6px;
+}
+
+.wb-search-detail {
+  padding: 10px;
+  overflow: auto;
+}
+
+.wb-search-results {
+  max-height: 58vh;
+}
+
+.wb-search-results .wb-message-row {
+  text-align: left;
+}
+
+.wb-search-results .wb-call-row-top,
+.wb-search-results .wb-call-row-meta {
+  min-width: 0;
+}
+
+.wb-search-results .wb-call-row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-search-detail .wb-detail-payload {
+  max-height: 42vh;
+}
+
+@media (max-width: 1100px) {
+  .wb-search-grid--terms,
+  .wb-search-grid--time,
+  .wb-search-split {
+    grid-template-columns: 1fr;
+  }
 }
 
 .wb-json-table {
