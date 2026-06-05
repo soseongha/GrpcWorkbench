@@ -33,6 +33,12 @@ spec:
               value: ""
             - name: ASAP__DdsMulticastAddress
               value: ""
+            - name: ASAP__DdsDataMulticastEnabled
+              value: "false"
+            - name: ASAP__DdsDataMulticastAddress
+              value: ""
+            - name: ASAP__DdsDataMulticastPort
+              value: ""
             - name: UDS_SOCKET_PATH
               value: /var/run/asap/grpc.sock
             - name: DEFAULT_TARGET_UDS_SOCKET_PATH

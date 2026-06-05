@@ -47,12 +47,14 @@ public sealed class DdsSessionService : IDdsSessionService, IAsyncDisposable
         var transport = NormalizeTransport(request.Transport);
 
         _logger.LogInformation(
-            "DDS session create requested name={Name} domain={Domain} discovery={DiscoveryMode} initialPeers={InitialPeers} multicast={Multicast}",
+            "DDS session create requested name={Name} domain={Domain} discovery={DiscoveryMode} initialPeers={InitialPeers} multicast={Multicast} dataMulticast={DataMulticast}:{DataMulticastPort}",
             request.Name,
             transport.DomainId,
             transport.DiscoveryMode,
             string.Join(",", transport.InitialPeers),
-            transport.MulticastAddress ?? "");
+            transport.MulticastAddress ?? "",
+            transport.DataMulticastAddress ?? "",
+            transport.DataMulticastPort?.ToString() ?? "");
 
         var host = _hostFactory.Create(transport, request.TypesXmlContent, configParse.QosProfilesXml);
 
@@ -103,6 +105,9 @@ public sealed class DdsSessionService : IDdsSessionService, IAsyncDisposable
             DiscoveryMode = discoveryMode,
             InitialPeers = initialPeers,
             MulticastAddress = string.IsNullOrWhiteSpace(source.MulticastAddress) ? null : source.MulticastAddress.Trim(),
+            DataMulticastEnabled = source.DataMulticastEnabled,
+            DataMulticastAddress = string.IsNullOrWhiteSpace(source.DataMulticastAddress) ? null : source.DataMulticastAddress.Trim(),
+            DataMulticastPort = source.DataMulticastPort is > 0 ? source.DataMulticastPort : null,
             AllowInterfaces = source.AllowInterfaces
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value.Trim())

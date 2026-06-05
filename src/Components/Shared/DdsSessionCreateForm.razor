@@ -47,6 +47,20 @@
     }
 
     <div class="wb-home-form mt-3">
+        <MudCheckBox @bind-Value="_dataMulticastEnabled"
+                     Label="토픽 데이터 멀티캐스트 수신"
+                     Color="Color.Primary" />
+        <MudTextField @bind-Value="_dataMulticastAddress" Label="데이터 멀티캐스트 주소"
+                      Placeholder="239.255.0.2"
+                      Disabled="!_dataMulticastEnabled"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudNumericField @bind-Value="_dataMulticastPort" Label="데이터 멀티캐스트 포트"
+                         Min="0" Max="65535"
+                         Disabled="!_dataMulticastEnabled"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+    </div>
+
+    <div class="wb-home-form mt-3">
         <div>
             <MudFileUpload T="IBrowserFile" FilesChanged="OnTypesFileSelected" Accept=".xml">
                 <ActivatorContent>
@@ -103,6 +117,9 @@
     private DdsDiscoveryMode _discoveryMode = DdsDiscoveryMode.Default;
     private string _initialPeersText = "";
     private string _multicast = "";
+    private bool _dataMulticastEnabled;
+    private string _dataMulticastAddress = "";
+    private int? _dataMulticastPort;
 
     private byte[]? _typesBytes;
     private string? _typesFileName;
@@ -119,6 +136,11 @@
 
         _initialPeersText = Configuration["ASAP:DdsInitialPeers"] ?? "";
         _multicast = Configuration["ASAP:DdsMulticastAddress"] ?? "";
+        if (bool.TryParse(Configuration["ASAP:DdsDataMulticastEnabled"], out var dataMulticastEnabled))
+            _dataMulticastEnabled = dataMulticastEnabled;
+        _dataMulticastAddress = Configuration["ASAP:DdsDataMulticastAddress"] ?? "";
+        if (int.TryParse(Configuration["ASAP:DdsDataMulticastPort"], out var dataMulticastPort) && dataMulticastPort > 0)
+            _dataMulticastPort = dataMulticastPort;
     }
 
     private async Task OnTypesFileSelected(IBrowserFile? file)
@@ -158,10 +180,16 @@
                 DiscoveryMode = _discoveryMode,
                 InitialPeers = ParsePeerList(_initialPeersText),
                 MulticastAddress = string.IsNullOrWhiteSpace(_multicast) ? null : _multicast.Trim(),
+                DataMulticastEnabled = _dataMulticastEnabled,
+                DataMulticastAddress = string.IsNullOrWhiteSpace(_dataMulticastAddress) ? null : _dataMulticastAddress.Trim(),
+                DataMulticastPort = _dataMulticastPort is > 0 ? _dataMulticastPort : null,
             };
 
             if (transport.DiscoveryMode == DdsDiscoveryMode.PeerToPeer && transport.InitialPeers.Count == 0)
                 throw new InvalidOperationException("피어 지정 discovery는 Initial peers가 필요합니다.");
+
+            if (transport.DataMulticastEnabled && string.IsNullOrWhiteSpace(transport.DataMulticastAddress))
+                throw new InvalidOperationException("데이터 멀티캐스트를 사용하려면 멀티캐스트 주소가 필요합니다.");
 
             var session = await Task.Run(() => DdsSessions.Create(new DdsSessionCreateRequest
             {

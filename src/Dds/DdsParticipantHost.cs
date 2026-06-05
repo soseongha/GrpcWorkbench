@@ -25,6 +25,7 @@ public sealed class DdsParticipantHost : IAsyncDisposable
     private readonly QosProvider _qosProvider;
     private readonly Publisher _publisher;
     private readonly Subscriber _subscriber;
+    private readonly DdsTransportSettings _transport;
     private readonly ILogger<DdsParticipantHost> _logger;
 
     private readonly ConcurrentDictionary<string, Topic<DynamicData>> _topics = new(StringComparer.OrdinalIgnoreCase);
@@ -37,10 +38,12 @@ public sealed class DdsParticipantHost : IAsyncDisposable
     public DdsParticipantHost(
         DomainParticipant participant,
         QosProvider qosProvider,
+        DdsTransportSettings transport,
         ILogger<DdsParticipantHost> logger)
     {
         _participant = participant;
         _qosProvider = qosProvider;
+        _transport = transport;
         _publisher = participant.ImplicitPublisher;
         _subscriber = participant.ImplicitSubscriber;
         _logger = logger;
@@ -74,7 +77,7 @@ public sealed class DdsParticipantHost : IAsyncDisposable
         return _readers.GetOrAdd(topicName, _ =>
         {
             var topic = GetOrCreateTopic(topicName, typeName);
-            var readerQos = TryGetDataReaderQos(qosProfileFullName);
+            var readerQos = ApplyDataMulticast(TryGetDataReaderQos(qosProfileFullName));
             var reader = readerQos is not null
                 ? _subscriber.CreateDataReader(topic, readerQos)
                 : _subscriber.CreateDataReader(topic);
@@ -164,6 +167,43 @@ public sealed class DdsParticipantHost : IAsyncDisposable
             _logger.LogDebug(ex, "DataWriterQos 로드 실패, 기본 QoS 사용: {Profile}", fullProfileName);
             return null;
         }
+    }
+
+    private DataReaderQos? ApplyDataMulticast(DataReaderQos? baseQos)
+    {
+        if (!_transport.DataMulticastEnabled)
+            return baseQos;
+
+        if (string.IsNullOrWhiteSpace(_transport.DataMulticastAddress))
+        {
+            _logger.LogWarning("DDS data multicast was enabled without an address; reader QoS multicast is unchanged.");
+            return baseQos;
+        }
+
+        var qos = baseQos ?? _qosProvider.GetDataReaderQos();
+        var address = _transport.DataMulticastAddress.Trim();
+        var port = _transport.DataMulticastPort.GetValueOrDefault();
+
+        var multicast = TransportMulticast.Default.With(policy =>
+        {
+            policy.Kind = TransportMulticastKind.Automatic;
+            policy.Value.Clear();
+            policy.Value.Add(TransportMulticastSettings.Default.With(settings =>
+            {
+                settings.ReceiveAddress = address;
+                if (port > 0)
+                    settings.ReceivePort = port;
+                settings.Transports.Clear();
+                settings.Transports.Add("builtin.udpv4");
+            }));
+        });
+
+        _logger.LogInformation(
+            "DDS data multicast enabled receiveAddress={Address} receivePort={Port}",
+            address,
+            port > 0 ? port.ToString() : "default");
+
+        return qos.WithMulticast(multicast);
     }
 
     private static string TryDescribeMatchedStatus(object entity)
@@ -268,7 +308,7 @@ public sealed class DdsParticipantHostFactory
             transport.DomainId, participantQos);
 
         var hostLogger = _loggerFactory.CreateLogger<DdsParticipantHost>();
-        return new DdsParticipantHost(participant, qosProvider, hostLogger);
+        return new DdsParticipantHost(participant, qosProvider, transport, hostLogger);
     }
 
     private static DomainParticipantQos ApplyTransport(
