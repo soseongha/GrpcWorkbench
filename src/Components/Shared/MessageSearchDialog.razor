@@ -50,7 +50,8 @@
                 <div class="wb-inline-note">빈 조건은 검색에서 제외됩니다.</div>
             </div>
 
-            <div class="wb-search-split">
+            <ResizableSplit Class="wb-search-split" StorageKey="sf.split.search" DefaultPrimary="380" MinPrimary="260" MinSecondary="320">
+                <Primary>
                 <div class="wb-search-list">
                     @if (_results.Count == 0)
                     {
@@ -77,7 +78,8 @@
                         </div>
                     }
                 </div>
-
+                </Primary>
+                <Secondary>
                 <div class="wb-search-detail">
                     @if (SelectedItem is null)
                     {
@@ -126,7 +128,8 @@
                         </div>
                     }
                 </div>
-            </div>
+                </Secondary>
+            </ResizableSplit>
         </div>
     </DialogContent>
     <DialogActions>
@@ -140,6 +143,7 @@
     [Parameter] public string Direction { get; set; } = string.Empty;
     [Parameter] public IReadOnlyList<MessageSearchResultItem> Items { get; set; } = [];
 
+    private readonly Dictionary<string, MessagePayloadSearchIndex> _payloadIndexById = new(StringComparer.Ordinal);
     private DateTime? _startDate;
     private TimeSpan? _startTime;
     private DateTime? _endDate;
@@ -172,6 +176,7 @@
 
     protected override void OnParametersSet()
     {
+        _payloadIndexById.Clear();
         _results = Items.ToList();
         EnsureSelection();
     }
@@ -183,8 +188,14 @@
             return;
 
         criteria.Direction = Direction;
+        var needsPayloadIndex = !string.IsNullOrWhiteSpace(criteria.PayloadKey)
+            || !string.IsNullOrWhiteSpace(criteria.PayloadValue);
         _results = Items
-            .Where(item => MessageSearchMatcher.Matches(criteria, item.Timestamp, item.Topic, item.PayloadJson, item.RawPayload))
+            .Where(item => MessageSearchMatcher.Matches(
+                criteria,
+                item.Timestamp,
+                item.Topic,
+                needsPayloadIndex ? GetPayloadIndex(item) : MessagePayloadSearchIndex.Empty))
             .ToList();
         _selectedId = null;
         _mode = MessagePayloadViewMode.Auto;
@@ -211,6 +222,16 @@
     {
         _selectedId = item.Id;
         _mode = MessagePayloadViewMode.Auto;
+    }
+
+    private MessagePayloadSearchIndex GetPayloadIndex(MessageSearchResultItem item)
+    {
+        if (_payloadIndexById.TryGetValue(item.Id, out var index))
+            return index;
+
+        index = MessagePayloadSearchIndex.Create(item.PayloadJson, item.RawPayload);
+        _payloadIndexById[item.Id] = index;
+        return index;
     }
 
     private void EnsureSelection()

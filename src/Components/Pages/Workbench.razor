@@ -558,7 +558,8 @@
                                                     }
                                                     else
                                                     {
-                                                        <div class="wb-message-split">
+                                                        <ResizableSplit Class="wb-message-split" StorageKey="sf.split.grpc.inbound" DefaultPrimary="240" MinPrimary="170" MinSecondary="260">
+                                                            <Primary>
                                                             <div class="wb-scroll wb-message-list">
                                                                 @foreach (var frame in incomingPanel.SelectedFramesDescending)
                                                                 {
@@ -572,6 +573,8 @@
                                                                     </button>
                                                                 }
                                                             </div>
+                                                            </Primary>
+                                                            <Secondary>
                                                             <div class="wb-message-content">
                                                                 @if (incomingPanel.SelectedFrame != null)
                                                                 {
@@ -582,7 +585,8 @@
                                                                     <div class="wb-empty" style="padding:18px 12px;">오른쪽에서 볼 메시지를 선택하세요</div>
                                                                 }
                                                             </div>
-                                                        </div>
+                                                            </Secondary>
+                                                        </ResizableSplit>
                                                     }
                                                 }
                                     </div>
@@ -864,7 +868,8 @@
                                                             <span>@outboundPanel.SelectedEntry.Time.ToLocalTime().ToString("HH:mm:ss")</span>
                                                         </div>
                                                     }
-                                                    <div class="wb-message-split">
+                                                    <ResizableSplit Class="wb-message-split" StorageKey="sf.split.grpc.outbound" DefaultPrimary="240" MinPrimary="170" MinSecondary="260">
+                                                        <Primary>
                                                         <div class="wb-scroll wb-message-list">
                                                             @foreach (var item in outboundPanel.SelectedEntries)
                                                             {
@@ -878,6 +883,8 @@
                                                                 </button>
                                                             }
                                                         </div>
+                                                        </Primary>
+                                                        <Secondary>
                                                         <div class="wb-message-content">
                                                             @if (outboundPanel.SelectedEntry != null)
                                                             {
@@ -888,7 +895,8 @@
                                                                 <div class="wb-empty" style="padding:18px 12px;">오른쪽에서 볼 메시지를 선택하세요</div>
                                                             }
                                                         </div>
-                                                    </div>
+                                                        </Secondary>
+                                                    </ResizableSplit>
                                                 }
                                     </div>
                                 </div>

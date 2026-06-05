@@ -1,0 +1,94 @@
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div @ref="_root"
+     class="wb-resizable-split @Class"
+     style="@CssVariables">
+    <div class="wb-resizable-pane wb-resizable-pane--primary">
+        @Primary
+    </div>
+    <div class="wb-resizable-handle"
+         role="separator"
+         aria-orientation="vertical"
+         aria-label="@HandleLabel"
+         tabindex="0"
+         title="@HandleLabel"
+         @ondblclick="@(() => ResetAsync())"
+         @onkeydown="OnHandleKeyDownAsync"></div>
+    <div class="wb-resizable-pane wb-resizable-pane--secondary">
+        @Secondary
+    </div>
+</div>
+
+@code {
+    private ElementReference _root;
+    private string? _appliedConfigKey;
+
+    [Parameter] public RenderFragment? Primary { get; set; }
+    [Parameter] public RenderFragment? Secondary { get; set; }
+    [Parameter] public string StorageKey { get; set; } = string.Empty;
+    [Parameter] public int DefaultPrimary { get; set; } = 280;
+    [Parameter] public int MinPrimary { get; set; } = 180;
+    [Parameter] public int MinSecondary { get; set; } = 240;
+    [Parameter] public string Class { get; set; } = string.Empty;
+    [Parameter] public string HandleLabel { get; set; } = "패널 크기 조절";
+
+    private string CssVariables
+        => $"--wb-split-primary:{DefaultPrimary}px;--wb-split-min-primary:{MinPrimary}px;--wb-split-min-secondary:{MinSecondary}px;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var configKey = $"{StorageKey}|{DefaultPrimary}|{MinPrimary}|{MinSecondary}";
+        if (!firstRender && string.Equals(_appliedConfigKey, configKey, StringComparison.Ordinal))
+            return;
+
+        _appliedConfigKey = configKey;
+        await JS.InvokeVoidAsync("workbench.resizableSplit.init", _root, new
+        {
+            storageKey = StorageKey,
+            defaultPrimary = DefaultPrimary,
+            minPrimary = MinPrimary,
+            minSecondary = MinSecondary
+        });
+    }
+
+    private async Task OnHandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        var delta = args.Key switch
+        {
+            "ArrowLeft" => -24,
+            "ArrowRight" => 24,
+            "Home" => int.MinValue,
+            "End" => int.MaxValue,
+            _ => 0
+        };
+
+        if (delta == 0)
+            return;
+
+        if (delta == int.MinValue)
+            await JS.InvokeVoidAsync("workbench.resizableSplit.setToMin", _root);
+        else if (delta == int.MaxValue)
+            await JS.InvokeVoidAsync("workbench.resizableSplit.setToMax", _root);
+        else
+            await JS.InvokeVoidAsync("workbench.resizableSplit.nudge", _root, delta);
+    }
+
+    private ValueTask ResetAsync()
+        => JS.InvokeVoidAsync("workbench.resizableSplit.reset", _root);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("workbench.resizableSplit.dispose", _root);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+}

@@ -32,6 +32,7 @@ else
     var outbound = _cachedOutbound;
     var inboundSubjects = _cachedInboundSubjects;
     var outboundSubjects = _cachedOutboundSubjects;
+    var outboundGroups = _cachedOutboundGroups;
     var selectedInboundSubject = ResolveSelectedSubject(inboundSubjects, _selectedInboundSubject);
     var selectedOutboundSubject = ResolveSelectedSubject(outboundSubjects, _selectedOutboundSubject);
     var stoppableInboundSubject = ResolveStoppableSubscription(subscriptions, selectedInboundSubject);
@@ -43,7 +44,7 @@ else
         : GetSelectedInboundMessages(subscriptions, inbound, selectedInboundSubject);
     var selectedOutboundMessages = string.IsNullOrWhiteSpace(selectedOutboundSubject)
         ? []
-        : outbound.Where(x => x.Subject == selectedOutboundSubject).ToList();
+        : _cachedOutboundBySubject.GetValueOrDefault(selectedOutboundSubject) ?? [];
     var selectedInboundMessage = ResolveSelectedMessage(selectedInboundMessages, _selectedInboundMessageId);
     var selectedOutboundMessage = ResolveSelectedMessage(selectedOutboundMessages, _selectedOutboundMessageId);
 
@@ -186,7 +187,8 @@ else
                 }
                 else
                 {
-                    <div class="wb-message-split">
+                    <ResizableSplit Class="wb-message-split" StorageKey="sf.split.nats.inbound" DefaultPrimary="260" MinPrimary="190" MinSecondary="260">
+                        <Primary>
                         <div class="wb-scroll wb-message-list">
                             <Virtualize TItem="NatsSubscriptionInfo" Items="@subscriptions" Context="subscription" ItemSize="62">
                                 @{
@@ -207,7 +209,8 @@ else
                                 </button>
                             </Virtualize>
                         </div>
-
+                        </Primary>
+                        <Secondary>
                         <div class="wb-message-content">
                             @if (selectedInboundSubscription == null)
                             {
@@ -237,7 +240,8 @@ else
                                 </div>
                             }
                         </div>
-                    </div>
+                        </Secondary>
+                    </ResizableSplit>
                 }
             </div>
         </MudItem>
@@ -275,18 +279,20 @@ else
                 {
                     <div class="wb-empty"><div>아직 발행한 메시지가 없습니다</div></div>
                 }
-                else if (outboundSubjects.Count == 0)
+                else if (outboundGroups.Count == 0)
                 {
                     <div class="wb-empty"><div>조건에 맞는 메시지 없음</div></div>
                 }
                 else
                 {
-                    <div class="wb-message-split">
+                    <ResizableSplit Class="wb-message-split" StorageKey="sf.split.nats.outbound" DefaultPrimary="260" MinPrimary="190" MinSecondary="260">
+                        <Primary>
                         <div class="wb-scroll wb-message-list">
-                            <Virtualize TItem="string" Items="@outboundSubjects" Context="subject" ItemSize="62">
+                            <Virtualize TItem="NatsSubjectGroupVm" Items="@outboundGroups" Context="subjectGroup" ItemSize="62">
                                 @{
-                                    var count = outbound.Count(x => x.Subject == subject);
-                                    var last = outbound.First(x => x.Subject == subject);
+                                    var subject = subjectGroup.Subject;
+                                    var count = subjectGroup.Messages.Count;
+                                    var last = subjectGroup.LastMessage;
                                 }
                                 <button type="button"
                                         class="wb-call-row @(selectedOutboundSubject == subject ? "is-selected" : null)"
@@ -303,7 +309,8 @@ else
                                 </button>
                             </Virtualize>
                         </div>
-
+                        </Primary>
+                        <Secondary>
                         <div class="wb-message-content">
                             @if (selectedOutboundMessage == null)
                             {
@@ -328,7 +335,8 @@ else
                                 </div>
                             }
                         </div>
-                    </div>
+                        </Secondary>
+                    </ResizableSplit>
                 }
             </div>
         </MudItem>
@@ -393,7 +401,14 @@ else
     private List<NatsMessageEntry> _cachedOutbound = [];
     private List<string> _cachedInboundSubjects = [];
     private List<string> _cachedOutboundSubjects = [];
+    private List<NatsSubjectGroupVm> _cachedOutboundGroups = [];
     private Dictionary<string, int> _cachedInboundExactCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _cachedInboundPatternCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, List<NatsMessageEntry>> _cachedInboundPatternMessages = new(StringComparer.Ordinal);
+    private Dictionary<string, List<NatsMessageEntry>> _cachedInboundBySubject = new(StringComparer.Ordinal);
+    private Dictionary<string, List<NatsMessageEntry>> _cachedOutboundBySubject = new(StringComparer.Ordinal);
+    private NatsSessionVersions _lastRenderedVersions;
+    private string? _lastRenderedSessionId;
 
     protected override void OnInitialized()
     {
@@ -407,6 +422,19 @@ else
                     if (_disposed)
                         break;
 
+                    var session = Session;
+                    if (session == null)
+                        continue;
+
+                    var versions = NatsSessions.GetVersions(session.SessionId);
+                    if (string.Equals(_lastRenderedSessionId, session.SessionId, StringComparison.Ordinal)
+                        && versions.Equals(_lastRenderedVersions))
+                    {
+                        continue;
+                    }
+
+                    _lastRenderedSessionId = session.SessionId;
+                    _lastRenderedVersions = versions;
                     await InvokeAsync(StateHasChanged);
                 }
             }
@@ -664,19 +692,25 @@ else
         {
             _cachedInbound = NatsSessions.SnapshotInbound(Session.SessionId).ToList();
             _cachedInbound.Reverse();
+            _cachedInboundBySubject = BuildMessagesBySubject(_cachedInbound);
             _cachedInboundExactCounts = BuildExactSubjectCounts(_cachedInbound);
             _cachedInboundVersion = versions.Inbound;
             subjectsDirty = true;
         }
 
         if (subjectsDirty)
+        {
             _cachedInboundSubjects = GetInboundSubjects(_cachedSubscriptions, _cachedInbound);
+            BuildInboundPatternCache();
+        }
 
         if (_cachedOutboundVersion != versions.Outbound)
         {
             _cachedOutbound = NatsSessions.SnapshotOutbound(Session.SessionId).ToList();
             _cachedOutbound.Reverse();
+            _cachedOutboundBySubject = BuildMessagesBySubject(_cachedOutbound);
             _cachedOutboundSubjects = GetOutboundSubjects(_cachedOutbound);
+            _cachedOutboundGroups = BuildSubjectGroups(_cachedOutboundBySubject);
             _cachedOutboundVersion = versions.Outbound;
         }
     }
@@ -692,7 +726,14 @@ else
         _cachedOutbound = [];
         _cachedInboundSubjects = [];
         _cachedOutboundSubjects = [];
+        _cachedOutboundGroups = [];
         _cachedInboundExactCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        _cachedInboundPatternCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        _cachedInboundPatternMessages = new Dictionary<string, List<NatsMessageEntry>>(StringComparer.Ordinal);
+        _cachedInboundBySubject = new Dictionary<string, List<NatsMessageEntry>>(StringComparer.Ordinal);
+        _cachedOutboundBySubject = new Dictionary<string, List<NatsMessageEntry>>(StringComparer.Ordinal);
+        _lastRenderedVersions = default;
+        _lastRenderedSessionId = null;
     }
 
     private int GetInboundCount(string subject)
@@ -700,14 +741,29 @@ else
         if (!HasNatsWildcard(subject))
             return _cachedInboundExactCounts.TryGetValue(subject, out var exactCount) ? exactCount : 0;
 
-        var wildcardCount = 0;
-        foreach (var message in _cachedInbound)
-        {
-            if (SubjectMatchesPattern(subject, message.Subject))
-                wildcardCount++;
-        }
+        return _cachedInboundPatternCounts.TryGetValue(subject, out var wildcardCount) ? wildcardCount : 0;
+    }
 
-        return wildcardCount;
+    private void BuildInboundPatternCache()
+    {
+        _cachedInboundPatternCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        _cachedInboundPatternMessages = new Dictionary<string, List<NatsMessageEntry>>(StringComparer.Ordinal);
+
+        foreach (var subscription in _cachedSubscriptions)
+        {
+            if (!HasNatsWildcard(subscription.Subject))
+                continue;
+
+            var matches = new List<NatsMessageEntry>();
+            foreach (var message in _cachedInbound)
+            {
+                if (SubjectMatchesPattern(subscription.Subject, message.Subject))
+                    matches.Add(message);
+            }
+
+            _cachedInboundPatternCounts[subscription.Subject] = matches.Count;
+            _cachedInboundPatternMessages[subscription.Subject] = matches;
+        }
     }
 
     private static Dictionary<string, int> BuildExactSubjectCounts(IReadOnlyList<NatsMessageEntry> inbound)
@@ -728,22 +784,38 @@ else
             .OrderBy(x => x)
             .ToList();
 
-    private static List<NatsMessageEntry> GetSelectedInboundMessages(
+    private List<NatsMessageEntry> GetSelectedInboundMessages(
         IReadOnlyList<NatsSubscriptionInfo> subscriptions,
         IReadOnlyList<NatsMessageEntry> inbound,
         string selectedInboundSubject)
     {
         var selectedSubscription = subscriptions.FirstOrDefault(x => string.Equals(x.Subject, selectedInboundSubject, StringComparison.Ordinal));
         if (selectedSubscription != null)
-            return inbound.Where(x => SubjectMatchesPattern(selectedSubscription.Subject, x.Subject)).ToList();
+        {
+            if (!HasNatsWildcard(selectedSubscription.Subject))
+                return _cachedInboundBySubject.GetValueOrDefault(selectedSubscription.Subject) ?? [];
 
-        return inbound.Where(x => string.Equals(x.Subject, selectedInboundSubject, StringComparison.Ordinal)).ToList();
+            return _cachedInboundPatternMessages.GetValueOrDefault(selectedSubscription.Subject) ?? [];
+        }
+
+        return _cachedInboundBySubject.GetValueOrDefault(selectedInboundSubject) ?? [];
     }
+
+    private static Dictionary<string, List<NatsMessageEntry>> BuildMessagesBySubject(IReadOnlyList<NatsMessageEntry> messages)
+        => messages
+            .GroupBy(x => x.Subject, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
 
     private static List<string> GetOutboundSubjects(IReadOnlyList<NatsMessageEntry> outbound)
         => outbound.Select(x => x.Subject)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(x => x)
+            .ToList();
+
+    private static List<NatsSubjectGroupVm> BuildSubjectGroups(Dictionary<string, List<NatsMessageEntry>> messagesBySubject)
+        => messagesBySubject
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => new NatsSubjectGroupVm(pair.Key, pair.Value))
             .ToList();
 
     private static string? ResolveSelectedSubject(IReadOnlyList<string> subjects, string? selected)
@@ -1256,6 +1328,11 @@ else
         {
             return null;
         }
+    }
+
+    private sealed record NatsSubjectGroupVm(string Subject, List<NatsMessageEntry> Messages)
+    {
+        public NatsMessageEntry LastMessage => Messages.Count > 0 ? Messages[0] : throw new InvalidOperationException("Empty subject group");
     }
 
     public void Dispose()

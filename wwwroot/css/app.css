@@ -794,6 +794,57 @@ body {
   grid-template-columns: minmax(170px, 0.45fr) minmax(0, 1.55fr);
 }
 
+.wb-resizable-split {
+  display: grid;
+  grid-template-columns:
+    minmax(var(--wb-split-min-primary, 180px), var(--wb-split-primary, 280px))
+    10px
+    minmax(var(--wb-split-min-secondary, 220px), 1fr);
+  gap: 0;
+  min-height: 260px;
+  min-width: 0;
+}
+
+.wb-resizable-split.wb-search-split {
+  min-height: 460px;
+}
+
+.wb-resizable-pane {
+  min-width: 0;
+}
+
+.wb-resizable-pane--primary {
+  padding-right: 5px;
+}
+
+.wb-resizable-pane--secondary {
+  padding-left: 5px;
+}
+
+.wb-resizable-handle {
+  position: relative;
+  cursor: col-resize;
+  border-radius: 999px;
+  outline: none;
+  touch-action: none;
+}
+
+.wb-resizable-handle::before {
+  content: "";
+  position: absolute;
+  inset: 8px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mud-palette-lines-default) 72%, transparent);
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.wb-resizable-handle:hover::before,
+.wb-resizable-handle:focus-visible::before,
+.wb-resizable-split.is-resizing .wb-resizable-handle::before {
+  background: color-mix(in srgb, var(--mud-palette-primary) 72%, var(--mud-palette-lines-default) 18%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mud-palette-primary) 18%, transparent);
+}
+
 .wb-message-list,
 .wb-message-content {
   min-width: 0;
@@ -862,7 +913,9 @@ body {
 
 .wb-detail-payload {
   max-height: 60vh;
+  min-height: 220px;
   overflow: auto;
+  resize: vertical;
   border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 82%, transparent);
   border-radius: 8px;
   padding: 10px;
@@ -897,6 +950,14 @@ body {
   grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr);
   gap: 12px;
   min-height: 460px;
+}
+
+.wb-resizable-split.wb-search-split {
+  grid-template-columns:
+    minmax(var(--wb-split-min-primary, 260px), var(--wb-split-primary, 380px))
+    10px
+    minmax(var(--wb-split-min-secondary, 300px), 1fr);
+  gap: 0;
 }
 
 .wb-search-list,
@@ -945,6 +1006,22 @@ body {
   .wb-search-grid--time,
   .wb-search-split {
     grid-template-columns: 1fr;
+  }
+
+  .wb-resizable-split,
+  .wb-resizable-split.wb-search-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .wb-resizable-pane--primary,
+  .wb-resizable-pane--secondary {
+    padding: 0;
+  }
+
+  .wb-resizable-handle {
+    display: none;
   }
 }
 

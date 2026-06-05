@@ -32,6 +32,12 @@
         <MudText Typo="Typo.caption" Class="ml-2 wb-brand-mark d-inline-flex d-sm-none">
             LIG
         </MudText>
+        <MudTooltip Text="@AuthorInfoText">
+            <MudIconButton Icon="@Icons.Material.Filled.Info"
+                           Color="Color.Inherit"
+                           Size="Size.Small"
+                           Class="ml-1" />
+        </MudTooltip>
         <MudText Typo="Typo.caption" Class="ml-3 d-none d-sm-flex"
                  Style="color:var(--mud-palette-text-disabled);">
             @AppVersion
@@ -66,15 +72,6 @@
         </MudButton>
 
         <MudSpacer />
-
-        <div class="d-flex align-center mr-3" style="gap:10px;">
-            <MudTooltip Text="이번 버전: 홈 상태 요약, 짧은 제목, DDS/NATS 메시지 트리, NATS 탭 즉시 닫기">
-                <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ma-0">변경사항</MudChip>
-            </MudTooltip>
-            <MudText Typo="Typo.caption" Class="d-none d-md-flex" Style="font-weight:600;">
-                상태 · 트리 · 제목
-            </MudText>
-        </div>
 
         <MudTooltip Text="@(Ui.IsDarkMode ? "라이트 모드" : "다크 모드")">
             <MudIconButton Icon="@(Ui.IsDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
@@ -174,6 +171,10 @@
 @code {
     private static readonly string AppVersion =
         $"v{Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0"}";
+    private const string AuthorInfoText =
+        "author : 서태원\n" +
+        "department : 미사일시스템통제기술연구소.M&S개발단.3팀\n" +
+        "email : taewon.seo2@ligdna.com";
     private bool _statusOpen;
     private bool _logsOpen;
     private IReadOnlyList<ForgeStatusVm> _cachedForgeStatus = [];

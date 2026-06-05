@@ -25,16 +25,12 @@ else
     EnsureDdsCache();
     var activeSubscriptions = ActiveSubscriptions.ToList();
     var outbound = RecentOutbound;
-    var outboundByTopic = outbound
-        .GroupBy(x => x.TopicName, StringComparer.Ordinal)
-        .OrderBy(group => group.Key, StringComparer.Ordinal)
-        .Select(group => new DdsOutboundTopicVm(group.Key, group.ToList()))
-        .ToList();
-    var outboundTopics = outboundByTopic.Select(x => x.TopicName).ToList();
+    var outboundByTopic = _cachedOutboundByTopic;
+    var outboundTopics = _cachedOutboundTopics;
     var selectedOutboundTopic = ResolveSelectedOutboundTopic(outboundTopics, _selectedOutboundTopicName);
     var selectedOutboundMessages = selectedOutboundTopic == null
         ? []
-        : outbound.Where(x => string.Equals(x.TopicName, selectedOutboundTopic, StringComparison.Ordinal)).ToList();
+        : _cachedOutboundMessagesByTopic.GetValueOrDefault(selectedOutboundTopic) ?? [];
     var selectedOutboundMessage = ResolveSelectedOutboundMessage(selectedOutboundMessages, _selectedOutboundKey);
 
     <div class="wb-panel wb-panel--major wb-panel--contain pa-3 mb-4">
@@ -167,7 +163,8 @@ else
                             var selectedSubscription = SelectedSubscription;
                             var selectedTopic = selectedSubscription == null ? null : FindTopic(selectedSubscription.TopicName);
                             var samples = selectedSubscription == null ? [] : GetCachedSamples(selectedSubscription.SubscriptionId);
-                            <div class="wb-message-split">
+                            <ResizableSplit Class="wb-message-split" StorageKey="sf.split.dds.inbound" DefaultPrimary="260" MinPrimary="190" MinSecondary="260">
+                                <Primary>
                                 <div class="wb-scroll wb-message-list">
                                     <Virtualize TItem="DdsSubscriptionInfo" Items="@activeSubscriptions" Context="subscription" ItemSize="62">
                                         <button type="button"
@@ -184,6 +181,8 @@ else
                                         </button>
                                     </Virtualize>
                                 </div>
+                                </Primary>
+                                <Secondary>
                                 <div class="wb-message-content">
                                     @if (selectedSubscription == null)
                                     {
@@ -213,7 +212,8 @@ else
                                         </div>
                                     }
                                 </div>
-                            </div>
+                                </Secondary>
+                            </ResizableSplit>
                         }
                     }
                 </div>
@@ -245,7 +245,8 @@ else
                     }
                     else
                     {
-                        <div class="wb-message-split">
+                        <ResizableSplit Class="wb-message-split" StorageKey="sf.split.dds.outbound" DefaultPrimary="260" MinPrimary="190" MinSecondary="260">
+                            <Primary>
                             <div class="wb-scroll wb-message-list">
                                 <Virtualize TItem="DdsOutboundTopicVm" Items="@outboundByTopic" Context="topicGroup" ItemSize="62">
                                     @{
@@ -268,7 +269,8 @@ else
                                     </button>
                                 </Virtualize>
                             </div>
-
+                            </Primary>
+                            <Secondary>
                             <div class="wb-message-content">
                                 @if (selectedOutboundMessage == null)
                                 {
@@ -296,7 +298,8 @@ else
                                         </div>
                                 }
                             </div>
-                        </div>
+                            </Secondary>
+                        </ResizableSplit>
                     }
                 </div>
             </MudItem>
@@ -700,14 +703,19 @@ else
     private long _cachedDdsOutboundVersion = -1;
     private string? _cachedSamplesSubscriptionId;
     private long _cachedSamplesVersion = -1;
+    private List<DdsTopicConfig> _cachedReceivableTopics = [];
     private List<DdsSubscriptionInfo> _cachedActiveSubscriptions = [];
+    private HashSet<string> _cachedActiveSubscriptionTopics = new(StringComparer.Ordinal);
     private List<DdsOutboundEntry> _cachedRecentOutbound = [];
+    private List<DdsOutboundTopicVm> _cachedOutboundByTopic = [];
+    private List<string> _cachedOutboundTopics = [];
+    private Dictionary<string, List<DdsOutboundEntry>> _cachedOutboundMessagesByTopic = new(StringComparer.Ordinal);
     private List<DdsSampleEntry> _cachedSamples = [];
 
     private IReadOnlyList<DdsTopicConfig> ReceivableTopics
         => Session == null
             ? []
-            : Session.Topics.Where(t => t.Direction != DdsTopicDirection.Publish).ToList();
+            : _cachedReceivableTopics;
 
     private IReadOnlyList<DdsSubscriptionInfo> ActiveSubscriptions
     {
@@ -737,7 +745,7 @@ else
 
     private int SelectedStartableSubscriptionCount
         => ReceivableTopics.Count(topic => _selectedSubscriptionTopics.Contains(topic.TopicName)
-            && ActiveSubscriptions.All(active => active.TopicName != topic.TopicName));
+            && !_cachedActiveSubscriptionTopics.Contains(topic.TopicName));
 
     private DdsTopicConfig? DefaultPublishTopic
         => Session?.Topics.FirstOrDefault(topic => topic.Direction != DdsTopicDirection.Subscribe);
@@ -781,12 +789,18 @@ else
         {
             ResetDdsCache();
             _cachedDdsSessionId = Session.SessionId;
+            _cachedReceivableTopics = Session.Topics
+                .Where(t => t.Direction != DdsTopicDirection.Publish)
+                .ToList();
         }
 
         var subscriptionVersion = DdsState.SubscriptionVersion;
         if (_cachedDdsSubscriptionVersion != subscriptionVersion)
         {
             _cachedActiveSubscriptions = DdsState.SnapshotSubscriptions(Session.SessionId).ToList();
+            _cachedActiveSubscriptionTopics = _cachedActiveSubscriptions
+                .Select(subscription => subscription.TopicName)
+                .ToHashSet(StringComparer.Ordinal);
             _cachedDdsSubscriptionVersion = subscriptionVersion;
         }
 
@@ -794,6 +808,14 @@ else
         if (_cachedDdsOutboundVersion != outboundVersion)
         {
             _cachedRecentOutbound = DdsState.SnapshotOutbound(Session.SessionId).ToList();
+            _cachedOutboundMessagesByTopic = _cachedRecentOutbound
+                .GroupBy(x => x.TopicName, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+            _cachedOutboundByTopic = _cachedOutboundMessagesByTopic
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new DdsOutboundTopicVm(pair.Key, pair.Value))
+                .ToList();
+            _cachedOutboundTopics = _cachedOutboundByTopic.Select(x => x.TopicName).ToList();
             _cachedDdsOutboundVersion = outboundVersion;
         }
     }
@@ -805,8 +827,13 @@ else
         _cachedDdsOutboundVersion = -1;
         _cachedSamplesSubscriptionId = null;
         _cachedSamplesVersion = -1;
+        _cachedReceivableTopics = [];
         _cachedActiveSubscriptions = [];
+        _cachedActiveSubscriptionTopics = new HashSet<string>(StringComparer.Ordinal);
         _cachedRecentOutbound = [];
+        _cachedOutboundByTopic = [];
+        _cachedOutboundTopics = [];
+        _cachedOutboundMessagesByTopic = new Dictionary<string, List<DdsOutboundEntry>>(StringComparer.Ordinal);
         _cachedSamples = [];
     }
 
@@ -2095,6 +2122,9 @@ else
         _selectedOutboundKey = null;
         _cachedDdsOutboundVersion = -1;
         _cachedRecentOutbound = [];
+        _cachedOutboundByTopic = [];
+        _cachedOutboundTopics = [];
+        _cachedOutboundMessagesByTopic = new Dictionary<string, List<DdsOutboundEntry>>(StringComparer.Ordinal);
         State.AddLog($"DDS 송신 기록 초기화: {Session.Name}", LogLevel.Info);
     }
 

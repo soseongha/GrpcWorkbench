@@ -1,0 +1,442 @@
+/////////////////////////////////////
+/// AUTO-GENERATED FROM DDSSim.xml
+/// DO NOT MODIFY BY HAND.
+////////////////////////////////////
+module ENUM{
+	enum ForceIdentifier{
+		Other = 0,
+		Friend = 1,
+		Hostile = 2,
+		Neutral = 3,
+		SureFriend = 4,
+		Unknown = 5,
+		Suspect = 6,
+		ExFriend = 7,
+		Faker = 8,
+		ExNeutral = 9,
+		ExSureFriend = 10,
+		ExUnknown = 11,
+		Joker = 12
+	};
+
+	enum JammingType{
+		NoJamming = 0,
+		ANJ = 1,
+		RGPO = 2,
+		VGPO = 3
+	};
+
+	enum ATSStatus{
+		NA = 0,
+		Turning = 1,
+		Evasive = 2,
+		Intercept = 3,
+		TBMStart = 11,
+		TBMSeparation = 12,
+		TBMDebris = 13,
+		EndOfFlight = 21
+	};
+
+	enum MunitionStatus{
+		NA = 0,
+		Launch = 1,
+		Separation = 2,
+		InterceptSuccess = 4,
+		SelfDestruction = 5,
+		EmergencyDestruction = 6,
+		TerrainImpact = 7
+	};
+
+	enum MunitionType{
+		NA = 0,
+		AAM = 1,
+		ABM = 2,
+		Booster = 3,
+		Shroud = 4,
+		HABM = 5
+	};
+
+	enum ThreatType{
+		Air = 0,
+		TBM = 1
+	};
+
+	enum SeekerPhase{
+		NS = 0,
+		SeekerOn = 1,
+		LockOnTarget = 2
+	};
+
+	enum NetworkID{
+		DDS = 0,
+		RTI = 1,
+		LTE = 2,
+		Link16 = 3,
+		MDIL = 4,
+		REG = 5,
+		LCHR = 6,
+		EMS = 7,
+		SIU = 8,
+		CIGP = 9
+	};
+
+	enum MessageID{
+		AirThreatInformation = 1,
+		MunitionInformation = 2,
+		UplinkInformation = 3,
+		DownlinkInformation = 4,
+		TimeTickInformation = 5,
+		GroundVehicleInformation = 6,
+		SimulatorStatus = 7,
+		SetLog = 8,
+		SetConfiguration = 9,
+		SetScenario = 10,
+		SetSimulation = 11,
+		Collision = 12,
+		MunitionDetonation = 13,
+		WeaponFire = 14,
+		TargetInformation = 15,
+		TrackNumberInfo = 16
+	};
+
+	enum SimulatorID{
+		TCC = 1,
+		TDS = 2,
+		VGD = 3,
+		DOLU = 4,
+		ELU = 5,
+		ATS_A = 11,
+		ATS_B = 12,
+		ATS_C = 13,
+		ATS_D = 14,
+		MSS_A = 21,
+		MSS_B = 22
+	};
+
+	enum SimulationStatus{
+		NA = 0,
+		On = 1,
+		Off = 2,
+		Scenario = 3,
+		Start = 4,
+		Stop = 5
+	};
+
+	enum CollisionStatus{
+		InElastic = 0,
+		Elastic = 1
+	};
+
+	enum DetonationType{
+		NA = 0,
+		ED = 29,
+		SDLockOnFail = 30,
+		SDTimeOut = 31,
+		SDDetectFail = 32,
+		SDHitFail = 33
+	};
+
+};
+
+module STRUCT {
+	struct MessageHeader8
+	{
+		unsigned long long TimeTick;
+		unsigned long long TimeStamp;
+		ENUM::MessageID MsgID;
+		ENUM::SimulatorID SrcSimID;
+		ENUM::SimulatorID DstSimID;
+	};
+
+	struct StandardDeviation2
+	{
+		unsigned short X;
+		unsigned short Y;
+		unsigned short Z;
+	};
+
+	struct Position8
+	{
+		double LocationX;
+		double LocationY;
+		double LocationZ;
+	};
+
+	struct RelativePosition8
+	{
+		double DistanceX;
+		double DistanceY;
+		double DistanceZ;
+	};
+
+	struct LLA8
+	{
+		double Latitude;
+		double Longitude;
+		double Altitude;
+	};
+
+	struct Velocity8
+	{
+		double VelocityX;
+		double VelocityY;
+		double VelocityZ;
+	};
+
+	struct Acceleration8
+	{
+		double AccelerationX;
+		double AccelerationY;
+		double AccelerationZ;
+	};
+
+	struct Orientation8
+	{
+		double Roll;
+		double Pitch;
+		double Yaw;
+	};
+
+	struct AER8
+	{
+		double Azimuth;
+		double Elevation;
+		double Roll;
+	};
+
+	struct ObjectInfo4
+	{
+		ENUM::ForceIdentifier IFF;
+		unsigned short ModelKind;
+		unsigned short ObjectNumber;
+		boolean IsFrozen;
+	};
+
+	struct Jamming4
+	{
+		ENUM::JammingType Type;
+		unsigned short JammingPower;
+		unsigned short JammingPullOff;
+	};
+
+	struct LCHRStatus2
+	{
+		unsigned short LaunchReadyStatus;
+		unsigned short LCUStatus;
+		unsigned short HotInventory;
+		unsigned short ColdInventory;
+		octet LSSNumber;
+		octet ConnectionStatus;
+	};
+
+	struct MFRStatus8
+	{
+		double BeamAzimuth;
+		double BeamAzimuthOffset;
+		double BeamElevation;
+		double BeamElevationOffset;
+		double BeamHorizontalArea;
+		double BeamVerticalArea;
+		unsigned long BeamRange;
+		octet BeamOnOffState;
+	};
+
+	struct Config8
+	{
+		string<255> ConfigName;
+		string<255> ConfigVersion;
+		ENUM::SimulatorID SimID;
+	};
+
+	struct AirThreat8
+	{
+		STRUCT::Position8 Position;
+		STRUCT::Velocity8 Velocity;
+		STRUCT::Acceleration8 Acceleration;
+		STRUCT::Orientation8 Orientation;
+		STRUCT::ObjectInfo4 Information;
+		STRUCT::Jamming4 JammingStatus;
+		ENUM::ATSStatus Status;
+		unsigned short MeanRCS;
+	};
+
+	struct Munition8
+	{
+		STRUCT::Position8 Position;
+		STRUCT::Velocity8 Velocity;
+		STRUCT::Acceleration8 Acceleration;
+		STRUCT::Orientation8 Orientation;
+		STRUCT::ObjectInfo4 Information;
+		ENUM::MunitionStatus Status;
+		ENUM::SeekerPhase SeekerStatus;
+		ENUM::MunitionType MissileType;
+		unsigned short LockOnThreatObjectNumber;
+		unsigned short MeanRCS;
+		unsigned short SignalPower;
+		unsigned short AddressKey;
+	};
+
+	struct GroundVehicle8
+	{
+		STRUCT::Position8 Position;
+		STRUCT::Velocity8 Velocity;
+		STRUCT::Acceleration8 Acceleration;
+		STRUCT::Orientation8 Orientation;
+		STRUCT::MFRStatus8 MFRStatus;
+		STRUCT::ObjectInfo4 Information;
+		STRUCT::LCHRStatus2 LauncherStatus;
+	};
+
+	struct Uplink2
+	{
+		unsigned short AddressKey;
+		unsigned short MissileType;
+		unsigned short Data[26];
+	};
+
+	struct Downlink2
+	{
+		unsigned short AddressKey;
+		unsigned short CRC;
+		unsigned short Data[24];
+	};
+
+	struct TimeTick8
+	{
+		unsigned long long TimeTick;
+		unsigned long SyncCycle;
+	};
+
+};
+module MSG {
+	struct AirThreatInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		unsigned short AirCount;
+		sequence<STRUCT::AirThreat8, 900> AirObjects;
+	};
+
+	struct MunitionInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		unsigned short MunitionCount;
+		sequence<STRUCT::Munition8, 900> MunitionObjects;
+	};
+
+	struct GroundVehicleInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		unsigned short GroundVehicleCount;
+		sequence<STRUCT::GroundVehicle8, 100> GroundVehicleObjects;
+	};
+
+	struct UplinkInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		unsigned short UplinkCount;
+		sequence<STRUCT::Uplink2, 56> UplinkMessages;
+	};
+
+	struct DownlinkInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		unsigned short DownlinkCount;
+		sequence<STRUCT::Downlink2, 56> DownlinkMessage;
+	};
+
+	struct TimeTickInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		STRUCT::TimeTick8 TimeTickMessage;
+	};
+
+	struct SimulatorStatus
+	{
+		STRUCT::MessageHeader8 Header;
+	};
+
+	struct WeaponFire
+	{
+		STRUCT::MessageHeader8 Header;
+		STRUCT::Position8 MFRPosition;
+		STRUCT::AER8 MFRAntennaAER;
+		ENUM::MunitionType MunitionType;
+		unsigned short MunitionObjectNumber;
+		unsigned short MunitionAddressKey;
+		unsigned short EDCode;
+		unsigned short IPGroundType;
+		unsigned short IsForcedFire;
+		unsigned short EncodingKeyTable[55];
+		octet LSSNumber;
+		boolean EncodingKeyFlag;
+	};
+
+	struct TargetInformation
+	{
+		STRUCT::MessageHeader8 Header;
+		STRUCT::Position8 TargetPosition;
+		STRUCT::Velocity8 TargetVelocity;
+		STRUCT::Position8 IPPosition;
+		STRUCT::Velocity8 IPVelocity;
+		ENUM::ThreatType TargetType;
+		STRUCT::StandardDeviation2 TargetPositionSTD;
+		STRUCT::StandardDeviation2 TargetVelocitySTD;
+		unsigned short MunitionObjectNumber;
+		unsigned short DelayTime;
+		octet LSSNumber;
+	};
+
+	struct TrackNumberInfo
+	{
+		STRUCT::MessageHeader8 Header;
+		unsigned short ObjectNumber;
+		unsigned short RDRTrackNumber;
+		unsigned short ECSTrackNumber;
+		unsigned short Link16TrackNumber;
+		unsigned short MDILTrackNumber;
+	};
+
+	struct SetLog
+	{
+		STRUCT::MessageHeader8 Header;
+		sequence<ENUM::NetworkID, 20> LogSaveNetworkList;
+	};
+
+	struct SetConfiguration
+	{
+		STRUCT::MessageHeader8 Header;
+		sequence<STRUCT::Config8, 50> Config;
+	};
+
+	struct SetScenario
+	{
+		STRUCT::MessageHeader8 Header;
+		string<255> ScenarioName;
+		string<255> ScenarioVersion;
+	};
+
+	struct SetSimulation
+	{
+		STRUCT::MessageHeader8 Header;
+		ENUM::SimulationStatus SetSim;
+	};
+
+	struct Collision
+	{
+		STRUCT::MessageHeader8 Header;
+		STRUCT::RelativePosition8 RelativePosition;
+		ENUM::CollisionStatus CollisionType;
+	};
+
+	struct MunitionDetonation
+	{
+		STRUCT::MessageHeader8 Header;
+		STRUCT::Position8 DetonationPosition;
+		STRUCT::Velocity8 FinalVelocity;
+		STRUCT::RelativePosition8 RelativePosition;
+		ENUM::DetonationType DetonationResult;
+		unsigned short MunitionObjectNumber;
+		unsigned short ThreatObjectNumber;
+	};
+
+};
